@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { AgentPanel } from "@/components/chat/agent-panel";
 import { useSpeechInput } from "@/components/chat/use-speech-input";
 import { MemoryCard } from "@/components/memory-card";
 import type { Memory, MemoryInsight } from "@/types/memory";
@@ -55,6 +56,11 @@ type ChatResponse = {
 type InsightsResponse = {
   error?: string;
   insight?: MemoryInsight | null;
+};
+
+type MemoriesResponse = {
+  error?: string;
+  memories?: Memory[];
 };
 
 type QuickPrompt = {
@@ -476,15 +482,25 @@ function ProactiveInsightsPanel({
 }
 
 export function ChatClient() {
-  const { accessToken, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const {
+    accessToken,
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    user
+  } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(starterMessages);
+  const [agentMemories, setAgentMemories] = useState<Memory[]>([]);
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
   const [input, setInput] = useState("");
+  const [isAgentMemoryLoading, setIsAgentMemoryLoading] = useState(false);
+  const [isAgentMode, setIsAgentMode] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSpeechSynthesisSupported, setIsSpeechSynthesisSupported] =
     useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(true);
+  const [agentError, setAgentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [proactiveInsight, setProactiveInsight] = useState<MemoryInsight | null>(
@@ -507,6 +523,11 @@ export function ChatClient() {
     onChange: setInput,
     value: input
   });
+
+  const taskStorageKey = useMemo(
+    () => (user?.id ? `ai-memory-agent-tasks:${user.id}` : null),
+    [user?.id]
+  );
 
   const stopTyping = useCallback((completeActiveMessage = false) => {
     if (typingTimerRef.current) {
@@ -614,6 +635,39 @@ export function ChatClient() {
     }
   }, [isSpeechSynthesisSupported, isVoiceMode]);
 
+  useEffect(() => {
+    if (!taskStorageKey || typeof window === "undefined") {
+      setCompletedTaskIds([]);
+      return;
+    }
+
+    try {
+      const savedTasks = window.localStorage.getItem(taskStorageKey);
+      const parsedTasks = savedTasks ? JSON.parse(savedTasks) : [];
+
+      setCompletedTaskIds(Array.isArray(parsedTasks) ? parsedTasks : []);
+    } catch {
+      setCompletedTaskIds([]);
+    }
+  }, [taskStorageKey]);
+
+  const toggleAgentTask = useCallback(
+    (taskId: string) => {
+      setCompletedTaskIds((current) => {
+        const nextTasks = current.includes(taskId)
+          ? current.filter((id) => id !== taskId)
+          : [...current, taskId];
+
+        if (taskStorageKey && typeof window !== "undefined") {
+          window.localStorage.setItem(taskStorageKey, JSON.stringify(nextTasks));
+        }
+
+        return nextTasks;
+      });
+    },
+    [taskStorageKey]
+  );
+
   const fetchInsights = useCallback(async () => {
     if (!accessToken) {
       setProactiveInsight(null);
@@ -649,15 +703,53 @@ export function ChatClient() {
     }
   }, [accessToken]);
 
+  const fetchAgentMemories = useCallback(async () => {
+    if (!accessToken) {
+      setAgentMemories([]);
+      setAgentError(null);
+      return;
+    }
+
+    setIsAgentMemoryLoading(true);
+    setAgentError(null);
+
+    try {
+      const response = await fetch("/api/memories", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      const data = (await response.json()) as MemoriesResponse;
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? "Agent memories could not be loaded.");
+      }
+
+      setAgentMemories(data.memories ?? []);
+    } catch (requestError) {
+      setAgentMemories([]);
+      setAgentError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Agent memories could not be loaded."
+      );
+    } finally {
+      setIsAgentMemoryLoading(false);
+    }
+  }, [accessToken]);
+
   useEffect(() => {
     if (!isAuthenticated || !accessToken) {
       setProactiveInsight(null);
       setInsightError(null);
+      setAgentMemories([]);
+      setAgentError(null);
       return;
     }
 
     void fetchInsights();
-  }, [accessToken, fetchInsights, isAuthenticated]);
+    void fetchAgentMemories();
+  }, [accessToken, fetchAgentMemories, fetchInsights, isAuthenticated]);
 
   async function sendMessage(rawMessage: string, mode: ChatMode = "chat") {
     const message = rawMessage.trim();
@@ -717,6 +809,7 @@ export function ChatClient() {
       streamAssistantText(assistantMessageId, assistantReply);
       speakReply(assistantReply);
       void fetchInsights();
+      void fetchAgentMemories();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -772,6 +865,20 @@ export function ChatClient() {
                   <VolumeX className="h-4 w-4" aria-hidden="true" />
                 )}
                 {isVoiceMode ? "Voice On" : "Voice Off"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAgentMode((current) => !current)}
+                className={[
+                  "inline-flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition",
+                  isAgentMode
+                    ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100 hover:border-emerald-300/60"
+                    : "border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-500"
+                ].join(" ")}
+                aria-pressed={isAgentMode}
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                {isAgentMode ? "Agent On" : "Agent Off"}
               </button>
             </div>
             <span className="inline-flex w-fit items-center gap-2 rounded-md border border-violet-300/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
@@ -953,6 +1060,20 @@ export function ChatClient() {
       </section>
 
       <aside className="flex flex-col gap-4">
+        <AgentPanel
+          completedTaskIds={completedTaskIds}
+          error={agentError}
+          insight={proactiveInsight}
+          isEnabled={isAgentMode}
+          isLoading={isAgentMemoryLoading || isInsightLoading}
+          memories={agentMemories}
+          onRefresh={() => {
+            void fetchAgentMemories();
+            void fetchInsights();
+          }}
+          onToggleTask={toggleAgentTask}
+        />
+
         <ProactiveInsightsPanel
           error={insightError}
           insight={proactiveInsight}
