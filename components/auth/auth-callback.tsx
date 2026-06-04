@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
-import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 export function AuthCallback() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
 
@@ -16,7 +14,7 @@ export function AuthCallback() {
 
     async function finishSignIn() {
       const code = searchParams.get("code");
-      const target = getAuthRedirectTarget(searchParams.get("next"));
+      const target = `${window.location.origin}/chat`;
 
       try {
         const supabase = getSupabaseBrowser();
@@ -36,7 +34,7 @@ export function AuthCallback() {
           }
         }
 
-        router.replace(target);
+        window.location.replace(target);
       } catch (callbackError) {
         if (!isMounted) {
           return;
@@ -55,7 +53,7 @@ export function AuthCallback() {
     return () => {
       isMounted = false;
     };
-  }, [router, searchParams]);
+  }, [searchParams]);
 
   return (
     <div className="relative min-h-[calc(100vh-81px)] overflow-hidden bg-slate-950 px-4 py-10 text-slate-100 sm:px-6 lg:px-8">

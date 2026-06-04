@@ -1,31 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Loader2, LogIn, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 
 export function LoginPanel() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const nextPath = getAuthRedirectTarget(searchParams.get("next"));
   const { isAuthenticated, isLoading, signInWithGoogle } = useAuth();
   const [error, setError] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace(nextPath);
+      router.replace("/chat");
     }
-  }, [isAuthenticated, isLoading, nextPath, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   async function handleGoogleLogin() {
     setError("");
     setIsSigningIn(true);
 
     try {
-      await signInWithGoogle(nextPath);
+      await signInWithGoogle();
     } catch (loginError) {
       setIsSigningIn(false);
       setError(

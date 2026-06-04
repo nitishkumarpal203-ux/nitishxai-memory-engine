@@ -1,20 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace(`/login?next=${encodeURIComponent(pathname || "/memories")}`);
+      router.replace("/login");
     }
-  }, [isAuthenticated, isLoading, pathname, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   if (isLoading) {
     return (

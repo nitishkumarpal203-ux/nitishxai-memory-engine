@@ -9,7 +9,6 @@ import {
   useState
 } from "react";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
-import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 type AuthContextValue = {
@@ -17,7 +16,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   session: Session | null;
-  signInWithGoogle: (nextPath?: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   user: User | null;
 };
@@ -64,16 +63,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async (nextPath = "/chat") => {
+  const signInWithGoogle = useCallback(async () => {
     const supabase = getSupabaseBrowser();
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-
-    callbackUrl.searchParams.set("next", getAuthRedirectTarget(nextPath));
+    const redirectTo = `${window.location.origin}/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: callbackUrl.toString()
+        redirectTo
       }
     });
 

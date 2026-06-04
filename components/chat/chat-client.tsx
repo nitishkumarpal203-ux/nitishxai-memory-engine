@@ -197,7 +197,7 @@ export function ChatClient() {
             <div className="mb-3 flex flex-col gap-3 rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm leading-6 text-cyan-100 sm:flex-row sm:items-center sm:justify-between">
               <span>Sign in to save memories to your private account.</span>
               <Link
-                href="/login?next=/chat"
+                href="/login"
                 className="inline-flex h-10 items-center justify-center rounded-md bg-cyan-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
               >
                 Login
