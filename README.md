@@ -73,15 +73,15 @@ SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_SITE_URL=https://your-site.example
 ```
 
 5. In Supabase, enable the Google provider under Authentication providers.
 
-6. Add this redirect URL in Supabase Auth settings:
+6. Add this callback URL in Supabase Auth settings for every origin you use:
 
 ```bash
-http://localhost:3000/auth/callback
+<your-current-site-origin>/auth/callback
 ```
 
 7. Start the app:
@@ -90,9 +90,9 @@ http://localhost:3000/auth/callback
 npm run dev
 ```
 
-8. Open `http://localhost:3000/login` and sign in with Google.
+8. Open the login page on the URL printed by the dev server and sign in with Google.
 
-9. Open `http://localhost:3000/memories` and enable `AI Semantic Search` to rank results by meaning.
+9. Open the Memories page and enable `AI Semantic Search` to rank results by meaning.
 
 ## Vercel Deployment
 
@@ -117,7 +117,7 @@ NEXT_PUBLIC_SITE_URL=https://your-vercel-domain.vercel.app
 ```bash
 Site URL: https://your-vercel-domain.vercel.app
 Redirect URLs:
-http://localhost:3000/auth/callback
+<your-local-dev-origin>/auth/callback
 https://your-vercel-domain.vercel.app/auth/callback
 ```
 

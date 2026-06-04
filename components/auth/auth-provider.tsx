@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 type AuthContextValue = {
@@ -63,16 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async (nextPath = "/memories") => {
+  const signInWithGoogle = useCallback(async (nextPath = "/chat") => {
     const supabase = getSupabaseBrowser();
-    const origin = window.location.origin;
-    const next = nextPath.startsWith("/") ? nextPath : "/memories";
-    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+
+    callbackUrl.searchParams.set("next", getAuthRedirectTarget(nextPath));
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo
+        redirectTo: callbackUrl.toString()
       }
     });
 

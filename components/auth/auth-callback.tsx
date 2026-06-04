@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
+import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 export function AuthCallback() {
@@ -15,8 +16,7 @@ export function AuthCallback() {
 
     async function finishSignIn() {
       const code = searchParams.get("code");
-      const next = searchParams.get("next") ?? "/memories";
-      const target = next.startsWith("/") ? next : "/memories";
+      const target = getAuthRedirectTarget(searchParams.get("next"));
 
       try {
         const supabase = getSupabaseBrowser();

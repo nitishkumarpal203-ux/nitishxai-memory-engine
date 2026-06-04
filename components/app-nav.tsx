@@ -12,6 +12,7 @@ import {
   UserCircle
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { getAuthRedirectTarget } from "@/lib/auth/redirects";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
@@ -22,6 +23,7 @@ export function AppNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isLoading, signOut, user } = useAuth();
+  const loginRedirectTarget = getAuthRedirectTarget(pathname);
   const avatarUrl =
     typeof user?.user_metadata?.avatar_url === "string"
       ? user.user_metadata.avatar_url
@@ -90,7 +92,7 @@ export function AppNav() {
           </>
         ) : (
           <Link
-            href={`/login?next=${encodeURIComponent(pathname || "/memories")}`}
+            href={`/login?next=${encodeURIComponent(loginRedirectTarget)}`}
             className="focus-ring inline-flex h-10 items-center gap-2 rounded-md bg-cyan-300 px-3 text-sm font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.2)] transition hover:bg-cyan-200"
           >
             <LogIn className="h-4 w-4" aria-hidden="true" />

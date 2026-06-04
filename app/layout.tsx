@@ -7,10 +7,19 @@ const metadataDescription =
   "A futuristic AI memory system MVP with Supabase Google Auth, private memory CRUD, voice input, and local contextual replies.";
 
 function getMetadataBase() {
+  const vercelUrl = process.env.VERCEL_URL;
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (vercelUrl
+      ? vercelUrl.startsWith("http")
+        ? vercelUrl
+        : `https://${vercelUrl}`
+      : "https://ai-memory-system.example");
+
   try {
-    return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
+    return new URL(siteUrl);
   } catch {
-    return new URL("http://localhost:3000");
+    return new URL("https://ai-memory-system.example");
   }
 }
 
