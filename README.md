@@ -27,11 +27,13 @@ app/
     memories/route.ts    # List, keyword search, and semantic search memories
     memories/[id]/route.ts # Edit and delete memories
   chat/page.tsx
+  graph/page.tsx
   login/page.tsx
   memories/page.tsx
 components/
   auth/
   chat/chat-client.tsx
+  graph/memory-graph.tsx
   memories/memory-search.tsx
   app-shell.tsx
   memory-card.tsx
@@ -135,7 +137,7 @@ https://your-vercel-domain.vercel.app/
 https://your-vercel-domain.vercel.app/memories
 ```
 
-8. Confirm the production flow: login with Google, send a voice or typed chat message, see the success reply, then edit/delete/search that memory on the dashboard.
+8. Confirm the production flow: login with Google, send a voice or typed chat message, see the success reply, edit/delete/search that memory on the dashboard, then open `/graph` to inspect memory relationships.
 
 ## How The Flow Works
 
@@ -157,3 +159,4 @@ https://your-vercel-domain.vercel.app/memories
 - Chat replies, embeddings, and semantic search all stay in local mock mode with no external AI API calls.
 - If the vector column or RPC is unavailable, memory saves still work and semantic search falls back to local ranking or keyword results.
 - Existing memories without vectors are backfilled with local embeddings during normal memory loads and semantic searches.
+- The Graph page renders a lightweight client-side SVG network from authenticated memories. It links nodes by shared category, keyword overlap, and local semantic concept similarity.

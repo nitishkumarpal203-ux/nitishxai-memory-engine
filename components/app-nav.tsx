@@ -9,13 +9,15 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
+  Network,
   UserCircle
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/memories", label: "Memories", icon: Database }
+  { href: "/memories", label: "Memories", icon: Database },
+  { href: "/graph", label: "Graph", icon: Network }
 ];
 
 export function AppNav() {
