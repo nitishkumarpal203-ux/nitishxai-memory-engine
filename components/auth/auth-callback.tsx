@@ -13,33 +13,37 @@ export function AuthCallback() {
     let isMounted = true;
 
     async function finishSignIn() {
+      const supabase = getSupabaseBrowser();
       const code = searchParams.get("code");
       const target = `${window.location.origin}/chat`;
 
       try {
-        if (!code) {
-          throw new Error(
-            "Google did not return an OAuth code. Please start sign in again."
-          );
+        if (code) {
+          const { error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(code);
+
+          if (exchangeError) {
+            throw exchangeError;
+          }
         }
 
-        const supabase = getSupabaseBrowser();
-        const { data, error: exchangeError } =
-          await supabase.auth.exchangeCodeForSession(code);
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
-        if (exchangeError) {
-          throw exchangeError;
+        const { data, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
         }
 
         if (!data.session) {
-          throw new Error("Supabase could not create a session from this login.");
+          throw new Error(
+            "No Supabase session was created. Please start sign in again."
+          );
         }
 
         window.location.replace(target);
       } catch (callbackError) {
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
 
         setError(
           callbackError instanceof Error
@@ -72,8 +76,7 @@ export function AuthCallback() {
             {error ? "Sign in needs attention" : "Completing Google sign in"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-400">
-            {error ||
-              "Hold tight while Supabase restores your authenticated session."}
+            {error || "Hold tight while Supabase restores your authenticated session."}
           </p>
         </section>
       </main>
