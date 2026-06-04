@@ -1,16 +1,21 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  Activity,
+  BookOpen,
   Brain,
   Bot,
   CalendarCheck,
+  Gauge,
   Layers,
   Lightbulb,
   Loader2,
   Mic,
   MicOff,
+  RefreshCw,
+  Rocket,
   Send,
   Sparkles,
   Target,
@@ -42,6 +47,11 @@ type ChatResponse = {
   reply?: string;
   saved?: boolean;
   savedMemories?: Memory[];
+};
+
+type InsightsResponse = {
+  error?: string;
+  insight?: MemoryInsight | null;
 };
 
 type QuickPrompt = {
@@ -78,6 +88,10 @@ const starterMessages: ChatMessage[] = [
       "I can answer like a local ChatGPT-style assistant using your saved long-term memories. Ask a question, dictate with the mic, or try a quick prompt."
   }
 ];
+
+const insightDateFormatter = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium"
+});
 
 function createMessageId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -178,12 +192,246 @@ function MemoriesUsed({ memories }: { memories?: Memory[] }) {
   );
 }
 
+function ScoreBar({
+  label,
+  value
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+        <span className="font-medium text-slate-300">{label}</span>
+        <span className="font-semibold text-cyan-200">{value}/100</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-950">
+        <div
+          className="h-full rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.35)]"
+          style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InsightList({ items }: { items: string[] }) {
+  if (!items.length) {
+    return <p className="text-xs leading-5 text-slate-500">Not enough signal yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {items.slice(0, 3).map((item) => (
+        <li key={item} className="text-xs leading-5 text-slate-300">
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ProactiveInsightsPanel({
+  error,
+  insight,
+  isLoading,
+  onRefresh
+}: {
+  error: string | null;
+  insight: MemoryInsight | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-violet-300/15 bg-slate-900/76 p-4 shadow-2xl shadow-violet-950/20 backdrop-blur">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Gauge className="h-4 w-4 text-violet-300" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-violet-100">AI Insights</h2>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            Proactive local recommendations from your memory graph.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-violet-300/20 bg-violet-400/10 text-violet-100 transition hover:border-violet-300/45 hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Refresh AI insights"
+          title="Refresh AI insights"
+        >
+          <RefreshCw
+            className={["h-4 w-4", isLoading ? "animate-spin" : ""].join(" ")}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="inline-flex w-full items-center gap-2 rounded-md border border-violet-300/15 bg-slate-950/60 px-3 py-3 text-sm text-violet-100">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Analyzing memories...
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-md border border-red-300/20 bg-red-950/30 px-3 py-3 text-sm leading-6 text-red-100">
+          {error}
+        </div>
+      ) : null}
+
+      {!isLoading && !error && !insight ? (
+        <p className="rounded-md border border-dashed border-violet-300/20 bg-slate-950/50 px-3 py-4 text-sm leading-6 text-slate-500">
+          Insights will appear after your secure session is ready.
+        </p>
+      ) : null}
+
+      {insight ? (
+        <div className="space-y-4">
+          <div className="rounded-md border border-cyan-300/15 bg-cyan-300/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+              Weekly Focus
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-100">
+              {insight.weeklyFocus}
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Top Interests
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {insight.topInterests.length ? (
+                  insight.topInterests.slice(0, 6).map((interest) => (
+                    <span
+                      key={interest}
+                      className="rounded-md border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-xs text-cyan-100"
+                    >
+                      {interest}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500">No interests yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Target className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Current Goals
+                </p>
+              </div>
+              <InsightList items={insight.currentGoals} />
+            </div>
+
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Activity className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Activity
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                <span>{insight.activity.streakDays} day streak</span>
+                <span>{insight.activity.memoriesThisWeek} this week</span>
+                <span>{insight.activity.activeDays} active days</span>
+                <span>{insight.activity.totalMemories} total</span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Last memory:{" "}
+                {insight.activity.lastMemoryAt
+                  ? insightDateFormatter.format(new Date(insight.activity.lastMemoryAt))
+                  : "none yet"}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-md border border-violet-300/10 bg-slate-950/60 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-200">
+              Dynamic Scores
+            </p>
+            <ScoreBar label="Learning" value={insight.scores.learning} />
+            <ScoreBar label="Productivity" value={insight.scores.productivity} />
+            <ScoreBar label="Startup" value={insight.scores.startup} />
+            <ScoreBar label="AI Focus" value={insight.scores.aiFocus} />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <CalendarCheck className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Focus Suggestions
+                </p>
+              </div>
+              <InsightList items={insight.focusSuggestions} />
+            </div>
+
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Learning
+                </p>
+              </div>
+              <InsightList items={insight.learningRecommendations} />
+            </div>
+
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Rocket className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Startup Ideas
+                </p>
+              </div>
+              <InsightList items={insight.projectIdeas} />
+            </div>
+
+            <div className="rounded-md border border-cyan-300/10 bg-slate-950/60 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+                  Productivity
+                </p>
+              </div>
+              <InsightList items={insight.productivityAdvice} />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-emerald-300/15 bg-emerald-300/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+              Suggested Next Step
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-100">
+              {insight.suggestedNextStep}
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function ChatClient() {
   const { accessToken, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(starterMessages);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isInsightLoading, setIsInsightLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
+  const [proactiveInsight, setProactiveInsight] = useState<MemoryInsight | null>(
+    null
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     isListening,
@@ -199,6 +447,51 @@ export function ChatClient() {
     () => [...messages].reverse().find((message) => message.role === "assistant"),
     [messages]
   );
+
+  const fetchInsights = useCallback(async () => {
+    if (!accessToken) {
+      setProactiveInsight(null);
+      setInsightError(null);
+      return;
+    }
+
+    setIsInsightLoading(true);
+    setInsightError(null);
+
+    try {
+      const response = await fetch("/api/insights", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      const data = (await response.json()) as InsightsResponse;
+
+      if (!response.ok || data.error || !data.insight) {
+        throw new Error(data.error ?? "AI insights could not be loaded.");
+      }
+
+      setProactiveInsight(data.insight);
+    } catch (requestError) {
+      setProactiveInsight(null);
+      setInsightError(
+        requestError instanceof Error
+          ? requestError.message
+          : "AI insights could not be loaded."
+      );
+    } finally {
+      setIsInsightLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) {
+      setProactiveInsight(null);
+      setInsightError(null);
+      return;
+    }
+
+    void fetchInsights();
+  }, [accessToken, fetchInsights, isAuthenticated]);
 
   async function sendMessage(rawMessage: string, mode: ChatMode = "chat") {
     const message = rawMessage.trim();
@@ -252,6 +545,7 @@ export function ChatClient() {
           text: data.reply ?? "I could not generate a local reply."
         }
       ]);
+      void fetchInsights();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -441,6 +735,13 @@ export function ChatClient() {
       </section>
 
       <aside className="flex flex-col gap-4">
+        <ProactiveInsightsPanel
+          error={insightError}
+          insight={proactiveInsight}
+          isLoading={isInsightLoading}
+          onRefresh={() => void fetchInsights()}
+        />
+
         <section className="rounded-lg border border-cyan-300/15 bg-slate-900/76 p-4 shadow-2xl shadow-cyan-950/20 backdrop-blur">
           <div className="mb-3 flex items-center gap-2">
             <Brain className="h-4 w-4 text-cyan-300" aria-hidden="true" />

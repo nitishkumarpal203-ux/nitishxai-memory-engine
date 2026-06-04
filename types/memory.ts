@@ -21,13 +21,34 @@ export type MemoryUpdate = {
 };
 
 export type MemoryInsight = {
+  activity: {
+    activeDays: number;
+    lastMemoryAt: string | null;
+    memoriesThisWeek: number;
+    streakDays: number;
+    totalMemories: number;
+  };
   categories: Array<{
     averageImportance: number;
     count: number;
     name: string;
   }>;
+  currentGoals: string[];
+  focusSuggestions: string[];
+  learningRecommendations: string[];
   nextAction: string;
+  productivityAdvice: string[];
+  projectIdeas: string[];
   repeatedThemes: string[];
+  scores: {
+    aiFocus: number;
+    learning: number;
+    productivity: number;
+    startup: number;
+  };
+  suggestedNextStep: string;
   summary: string;
+  topInterests: string[];
   totalMemories: number;
+  weeklyFocus: string;
 };
