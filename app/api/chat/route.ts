@@ -3,17 +3,27 @@ import {
   isAuthRequiredError,
   requireAuthenticatedUser
 } from "@/lib/auth/server";
-import { generateChatReply } from "@/lib/ai";
+import { generateChatReply, generateMemoryInsightReply } from "@/lib/ai";
 import { isMissingConfigError } from "@/lib/env";
-import { findRelevantMemories, saveMemory } from "@/lib/memories";
+import { findRelevantMemories, listMemories, saveMemory } from "@/lib/memories";
 import type { Memory } from "@/types/memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isInsightRequest(message: string, mode?: unknown) {
+  if (mode === "insight") {
+    return true;
+  }
+
+  return /memory insight|summarize my memories|summarise my memories|summary of my memories/i.test(
+    message
+  );
+}
+
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { message?: unknown };
+    const body = (await request.json()) as { message?: unknown; mode?: unknown };
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
     if (!message) {
@@ -28,18 +38,41 @@ export async function POST(request: Request) {
 
     let relevantMemories: Memory[] = [];
     const user = await requireAuthenticatedUser(request);
+    const useInsightMode = isInsightRequest(message, body.mode);
 
     try {
-      relevantMemories = await findRelevantMemories(user.id, message, 3);
+      relevantMemories = await findRelevantMemories(user.id, message, 5);
     } catch {
       relevantMemories = [];
     }
 
-    const reply = await generateChatReply(message, relevantMemories);
+    let reply = await generateChatReply(message, relevantMemories);
+    let insight = null;
+
+    if (useInsightMode) {
+      let memoriesForInsight: Memory[] = [];
+
+      try {
+        memoriesForInsight = await listMemories({ limit: 100, userId: user.id });
+      } catch {
+        memoriesForInsight = relevantMemories;
+      }
+
+      const insightResult = generateMemoryInsightReply(memoriesForInsight);
+
+      insight = insightResult.insight;
+      reply = insightResult.reply;
+      relevantMemories = relevantMemories.length
+        ? relevantMemories
+        : memoriesForInsight.slice(0, 5);
+    }
+
     const savedMemory = await saveMemory(user.id, message);
 
     return NextResponse.json(
       {
+        insight,
+        mode: useInsightMode ? "insight" : "chat",
         relevantMemories,
         reply,
         savedMemories: [savedMemory],

@@ -256,7 +256,7 @@ async function rankMemoriesByLocalSimilarity(
 export async function findRelevantMemories(
   userId: string,
   message: string,
-  limit = 3
+  limit = 5
 ): Promise<Memory[]> {
   const memories = await listMemories({ limit: LOCAL_SEARCH_LIMIT, userId });
   const ranked = memories
@@ -265,10 +265,13 @@ export async function findRelevantMemories(
       keywordScore: getKeywordScore(message, memory),
       score: scoreMemoryAgainstMessage(message, memory)
     }))
-    .filter((result) => result.keywordScore >= 1)
     .sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
+      }
+
+      if (b.keywordScore !== a.keywordScore) {
+        return b.keywordScore - a.keywordScore;
       }
 
       return (

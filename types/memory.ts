@@ -19,3 +19,15 @@ export type MemoryUpdate = {
   category: string;
   importance: number;
 };
+
+export type MemoryInsight = {
+  categories: Array<{
+    averageImportance: number;
+    count: number;
+    name: string;
+  }>;
+  nextAction: string;
+  repeatedThemes: string[];
+  summary: string;
+  totalMemories: number;
+};

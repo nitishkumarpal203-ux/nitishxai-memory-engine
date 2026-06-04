@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChatClient } from "@/components/chat/chat-client";
 
 export const metadata: Metadata = {
   description:
-    "Chat with a local AI memory loop that searches private Supabase memories before saving new context.",
+    "Chat with a local AI assistant that uses private Supabase memories for personal context.",
   title: "Chat"
 };
 
@@ -14,14 +15,16 @@ export default function ChatPage() {
       <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6">
         <section className="flex flex-col gap-2">
           <h1 className="text-3xl font-semibold tracking-normal text-white sm:text-4xl">
-            Chat
+            AI Memory Assistant
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-            Send a message, search saved memories locally, and receive a
-            contextual reply without external AI API calls.
+            Ask for personal guidance, run memory insights, or dictate a new
+            note. Replies use local rules and your saved Supabase memories.
           </p>
         </section>
-        <ChatClient />
+        <AuthGuard>
+          <ChatClient />
+        </AuthGuard>
       </div>
     </div>
   );
