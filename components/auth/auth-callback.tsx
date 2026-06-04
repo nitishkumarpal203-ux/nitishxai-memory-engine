@@ -17,21 +17,22 @@ export function AuthCallback() {
       const target = `${window.location.origin}/chat`;
 
       try {
+        if (!code) {
+          throw new Error(
+            "Google did not return an OAuth code. Please start sign in again."
+          );
+        }
+
         const supabase = getSupabaseBrowser();
+        const { data, error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code);
 
-        if (code) {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          throw exchangeError;
+        }
 
-          if (exchangeError) {
-            throw exchangeError;
-          }
-        } else {
-          const { data } = await supabase.auth.getSession();
-
-          if (!data.session) {
-            throw new Error("No Supabase session was found after sign in.");
-          }
+        if (!data.session) {
+          throw new Error("Supabase could not create a session from this login.");
         }
 
         window.location.replace(target);
