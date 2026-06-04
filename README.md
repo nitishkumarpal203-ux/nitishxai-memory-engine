@@ -3,7 +3,8 @@
 A clean Next.js App Router MVP for memory-aware chat:
 
 - Chat page where the user sends a message.
-- Messages are saved directly into Supabase with optional vector embeddings.
+- Chat messages stay transient unless local rules extract a durable long-term memory.
+- Long-term memories include type labels, confidence, pinned, archived, and temporary state.
 - Local mock AI returns a successful response.
 - Memories page lists, edits, deletes, keyword searches, and semantic vector-searches saved memories.
 
@@ -23,7 +24,7 @@ A clean Next.js App Router MVP for memory-aware chat:
 app/
   auth/callback/page.tsx # Completes Google OAuth sign in
   api/
-    chat/route.ts        # Validate message and save memory
+    chat/route.ts        # Validate chat and selectively save long-term memories
     memories/route.ts    # List, keyword search, and semantic search memories
     memories/[id]/route.ts # Edit and delete memories
   chat/page.tsx
@@ -144,12 +145,16 @@ https://your-vercel-domain.vercel.app/memories
 1. The user submits a chat message.
 2. The client sends the Supabase access token to `app/api/chat/route.ts`.
 3. The route validates the token with Supabase Auth and uses `user.id`.
-4. The message is inserted into `public.memories` as `memory_text` with `user_id`.
-5. A deterministic local mock embedding is saved in `embedding` when the vector column exists.
-6. The API returns `{ "reply": "Memory saved successfully.", "saved": true }`.
+4. Existing active long-term memories are searched before the reply.
+5. The current chat prompt is not automatically stored as a permanent memory.
+6. Local rules extract durable goals, interests, learning plans, startup ideas, productivity notes, or explicit “remember this” statements.
+7. Extracted memories are inserted into `public.memories` with `memory_text`, `memory_type`, `confidence`, pin/archive/temp flags, and `user_id`.
+8. A deterministic local mock embedding is saved in `embedding` when the vector column exists and the memory is active long-term.
+9. The API can return `saved: false` successfully when the prompt was only a chat message.
 7. The Memories page reads only the authenticated user's rows.
-8. Chat retrieves top memories by semantic meaning first, then falls back to keyword, importance, and recency ranking.
-9. When `Semantic Search` is enabled, `/api/memories?query=...&semantic=true` calls the `match_memories` RPC and returns similarity-scored semantic matches. If the RPC is unavailable, the app falls back to local semantic ranking or keyword results.
+10. Chat retrieves top active long-term memories by semantic meaning first, then falls back to keyword, memory type, confidence, pinned state, importance, and recency ranking.
+11. Archived and temporary memories are excluded from chat retrieval, AI insights, graph, and semantic retrieval by default.
+12. When `Semantic Search` is enabled, `/api/memories?query=...&semantic=true` calls the `match_memories` RPC and returns similarity-scored semantic matches. If the RPC is unavailable, the app falls back to local semantic ranking or keyword results.
 
 ## MVP Notes
 

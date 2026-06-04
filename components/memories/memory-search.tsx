@@ -3,19 +3,23 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
+  Archive,
   BrainCircuit,
   CalendarDays,
   Database,
   Pencil,
   Loader2,
+  Pin,
   Save,
   Search,
   SignalHigh,
+  Tags,
+  Timer,
   Trash2,
   X
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
-import type { Memory } from "@/types/memory";
+import type { Memory, MemoryType } from "@/types/memory";
 
 type MemoriesResponse = {
   aiSearch?: boolean;
@@ -23,6 +27,7 @@ type MemoriesResponse = {
   notice?: string;
   error?: string;
   searchMode?: "keyword" | "semantic";
+  status?: MemoryStatusFilter;
 };
 
 type DeleteMemoryResponse = {
@@ -41,11 +46,30 @@ const formatter = new Intl.DateTimeFormat("en", {
   timeStyle: "short"
 });
 
+type MemoryStatusFilter = "active" | "all" | "archived" | "pinned" | "temporary";
+
+const memoryTypes: MemoryType[] = [
+  "goal",
+  "learning",
+  "startup",
+  "productivity",
+  "idea"
+];
+
+const statusFilters: Array<{ label: string; value: MemoryStatusFilter }> = [
+  { label: "Active", value: "active" },
+  { label: "Pinned", value: "pinned" },
+  { label: "Temporary", value: "temporary" },
+  { label: "Archived", value: "archived" },
+  { label: "All", value: "all" }
+];
+
 export function MemorySearch() {
   const { accessToken } = useAuth();
   const [query, setQuery] = useState("");
   const [memories, setMemories] = useState<Memory[]>([]);
   const [isSemanticSearch, setIsSemanticSearch] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<MemoryStatusFilter>("active");
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -53,11 +77,20 @@ export function MemorySearch() {
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [editMemoryText, setEditMemoryText] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editConfidence, setEditConfidence] = useState(0.7);
   const [editImportance, setEditImportance] = useState(5);
+  const [editIsArchived, setEditIsArchived] = useState(false);
+  const [editIsPinned, setEditIsPinned] = useState(false);
+  const [editIsTemporary, setEditIsTemporary] = useState(false);
+  const [editMemoryType, setEditMemoryType] = useState<MemoryType>("idea");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const fetchMemories = useCallback(async (searchQuery = "", semanticEnabled = false) => {
+  const fetchMemories = useCallback(async (
+    searchQuery = "",
+    semanticEnabled = false,
+    status: MemoryStatusFilter = "active"
+  ) => {
     setIsLoading(true);
     setError(null);
     setNotice(null);
@@ -77,6 +110,8 @@ export function MemorySearch() {
       if (semanticEnabled && trimmedQuery) {
         params.set("semantic", "true");
       }
+
+      params.set("status", status);
 
       const endpoint = params.toString()
         ? `/api/memories?${params.toString()}`
@@ -113,14 +148,19 @@ export function MemorySearch() {
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void fetchMemories(query, isSemanticSearch);
+    void fetchMemories(query, isSemanticSearch, statusFilter);
   }
 
   function handleSemanticSearchToggle() {
     const nextValue = !isSemanticSearch;
 
     setIsSemanticSearch(nextValue);
-    void fetchMemories(query, nextValue);
+    void fetchMemories(query, nextValue, statusFilter);
+  }
+
+  function handleStatusFilterChange(nextStatus: MemoryStatusFilter) {
+    setStatusFilter(nextStatus);
+    void fetchMemories(query, isSemanticSearch, nextStatus);
   }
 
   function openEditModal(memory: Memory) {
@@ -128,7 +168,12 @@ export function MemorySearch() {
     setEditingMemory(memory);
     setEditMemoryText(memory.memory_text);
     setEditCategory(memory.category);
+    setEditConfidence(memory.confidence);
     setEditImportance(memory.importance);
+    setEditIsArchived(memory.is_archived);
+    setEditIsPinned(memory.is_pinned);
+    setEditIsTemporary(memory.is_temporary);
+    setEditMemoryType(memory.memory_type);
   }
 
   async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
@@ -145,6 +190,7 @@ export function MemorySearch() {
 
     const memoryText = editMemoryText.trim();
     const category = editCategory.trim() || "general";
+    const confidence = Math.min(1, Math.max(0, editConfidence));
     const importance = Math.min(5, Math.max(1, Math.round(editImportance)));
 
     if (!memoryText) {
@@ -164,7 +210,12 @@ export function MemorySearch() {
         },
         body: JSON.stringify({
           category,
+          confidence,
           importance,
+          is_archived: editIsArchived,
+          is_pinned: editIsPinned,
+          is_temporary: editIsTemporary,
+          memory_type: editMemoryType,
           memory_text: memoryText
         })
       });
@@ -297,6 +348,24 @@ export function MemorySearch() {
               Search
             </button>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {statusFilters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => handleStatusFilterChange(filter.value)}
+                className={[
+                  "inline-flex h-9 items-center justify-center rounded-md border px-3 text-xs font-semibold transition",
+                  statusFilter === filter.value
+                    ? "border-cyan-300/55 bg-cyan-300 text-slate-950"
+                    : "border-cyan-300/15 bg-slate-950/60 text-cyan-100 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+                ].join(" ")}
+                aria-pressed={statusFilter === filter.value}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </form>
       </div>
 
@@ -333,6 +402,31 @@ export function MemorySearch() {
                     <SignalHigh className="h-3.5 w-3.5" aria-hidden="true" />
                     {memory.importance}/5
                   </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+                    <Tags className="h-3.5 w-3.5" aria-hidden="true" />
+                    {memory.memory_type}
+                  </span>
+                  <span className="rounded-md border border-slate-500/30 bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-300">
+                    {Math.round(memory.confidence * 100)}% confidence
+                  </span>
+                  {memory.is_pinned ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                      <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+                      pinned
+                    </span>
+                  ) : null}
+                  {memory.is_temporary ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-300/20 bg-violet-300/10 px-2.5 py-1 text-xs font-semibold text-violet-200">
+                      <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                      temporary
+                    </span>
+                  ) : null}
+                  {memory.is_archived ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-400/20 bg-slate-400/10 px-2.5 py-1 text-xs font-semibold text-slate-300">
+                      <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                      archived
+                    </span>
+                  ) : null}
                   {typeof memory.similarity === "number" ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-300/20 bg-violet-300/10 px-2.5 py-1 text-xs font-semibold text-violet-200">
                       <BrainCircuit className="h-3.5 w-3.5" aria-hidden="true" />
@@ -385,7 +479,8 @@ export function MemorySearch() {
         <div className="mt-5 rounded-lg border border-dashed border-cyan-300/20 bg-slate-950/50 px-4 py-12 text-center">
           <p className="text-sm font-medium text-slate-200">No memories found.</p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Send a chat message first, then refresh this dashboard.
+            Save a durable goal, interest, project idea, or preference in chat,
+            then refresh this dashboard.
           </p>
         </div>
       )}
@@ -469,6 +564,79 @@ export function MemorySearch() {
                     className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
                   />
                 </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+                <div>
+                  <label htmlFor="edit-memory-type" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    memory type
+                  </label>
+                  <select
+                    id="edit-memory-type"
+                    value={editMemoryType}
+                    onChange={(event) =>
+                      setEditMemoryType(event.target.value as MemoryType)
+                    }
+                    disabled={Boolean(updatingId)}
+                    className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {memoryTypes.map((memoryType) => (
+                      <option key={memoryType} value={memoryType}>
+                        {memoryType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-confidence" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    confidence
+                  </label>
+                  <input
+                    id="edit-confidence"
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={editConfidence}
+                    onChange={(event) => setEditConfidence(Number(event.target.value))}
+                    disabled={Boolean(updatingId)}
+                    className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="flex min-h-11 items-center gap-2 rounded-md border border-amber-300/15 bg-amber-300/10 px-3 text-sm font-medium text-amber-100">
+                  <input
+                    type="checkbox"
+                    checked={editIsPinned}
+                    onChange={(event) => setEditIsPinned(event.target.checked)}
+                    disabled={Boolean(updatingId)}
+                    className="h-4 w-4 accent-cyan-300"
+                  />
+                  Pinned
+                </label>
+                <label className="flex min-h-11 items-center gap-2 rounded-md border border-violet-300/15 bg-violet-300/10 px-3 text-sm font-medium text-violet-100">
+                  <input
+                    type="checkbox"
+                    checked={editIsTemporary}
+                    onChange={(event) => setEditIsTemporary(event.target.checked)}
+                    disabled={Boolean(updatingId)}
+                    className="h-4 w-4 accent-cyan-300"
+                  />
+                  Temporary
+                </label>
+                <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-500/20 bg-slate-500/10 px-3 text-sm font-medium text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={editIsArchived}
+                    onChange={(event) => setEditIsArchived(event.target.checked)}
+                    disabled={Boolean(updatingId)}
+                    className="h-4 w-4 accent-cyan-300"
+                  />
+                  Archived
+                </label>
               </div>
             </div>
 

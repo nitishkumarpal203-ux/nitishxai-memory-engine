@@ -1,3 +1,10 @@
+export type MemoryType =
+  | "goal"
+  | "learning"
+  | "startup"
+  | "productivity"
+  | "idea";
+
 export type Memory = {
   id: string;
   user_id: string;
@@ -5,19 +12,34 @@ export type Memory = {
   category: string;
   importance: number;
   created_at: string;
+  confidence: number;
+  is_archived: boolean;
+  is_pinned: boolean;
+  is_temporary: boolean;
+  memory_type: MemoryType;
   similarity?: number | null;
 };
 
 export type MemoryDraft = {
   memory_text: string;
   category: string;
+  confidence: number;
   importance: number;
+  is_archived?: boolean;
+  is_pinned?: boolean;
+  is_temporary?: boolean;
+  memory_type: MemoryType;
 };
 
 export type MemoryUpdate = {
   memory_text: string;
   category: string;
+  confidence: number;
   importance: number;
+  is_archived: boolean;
+  is_pinned: boolean;
+  is_temporary: boolean;
+  memory_type: MemoryType;
 };
 
 export type MemoryInsight = {

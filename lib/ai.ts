@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Memory, MemoryDraft, MemoryInsight } from "@/types/memory";
+import type { Memory, MemoryDraft, MemoryInsight, MemoryType } from "@/types/memory";
 
 const INSIGHT_STOP_WORDS = new Set([
   "about",
@@ -89,6 +89,17 @@ const CONCEPT_KEYWORDS = {
   ]
 };
 
+const DURABLE_MEMORY_PATTERNS = [
+  /\bremember\b/i,
+  /\bsave (this|that|as|my)\b/i,
+  /\bmy (goal|goals|priority|priorities|interest|interests|preference|preferences)\b/i,
+  /\bi (want|need|plan|prefer|like|love|am learning|study|work on|build|ship|launch)\b/i,
+  /\b(startup|saas|business|monetization|productivity|learning roadmap|project idea)\b/i
+];
+
+const SHORT_QUESTION_PATTERN =
+  /^(what|when|where|why|how|who|can|could|should|would|do|does|did|is|are)\b/i;
+
 function summarizeMemory(memory: Memory) {
   const text = memory.memory_text.trim();
 
@@ -97,6 +108,87 @@ function summarizeMemory(memory: Memory) {
   }
 
   return `${text.slice(0, 137).trim().replace(/[.!?]+$/, "")}...`;
+}
+
+function classifyMemoryType(text: string): MemoryType {
+  const value = text.toLowerCase();
+
+  if (/\bgoal|goals|priority|priorities|aim|mission|focus\b/.test(value)) {
+    return "goal";
+  }
+
+  if (/\blearn|learning|study|skill|course|book|practice|roadmap\b/.test(value)) {
+    return "learning";
+  }
+
+  if (/\bstartup|saas|business|customer|market|monetization|revenue|launch\b/.test(value)) {
+    return "startup";
+  }
+
+  if (/\bproductivity|habit|routine|schedule|workflow|task|focus block\b/.test(value)) {
+    return "productivity";
+  }
+
+  return "idea";
+}
+
+function getCategoryFromMemoryType(memoryType: MemoryType) {
+  if (memoryType === "goal") {
+    return "goals";
+  }
+
+  return memoryType;
+}
+
+function getMemoryConfidence(message: string, memoryType: MemoryType) {
+  const text = message.trim();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  let confidence = 0.42;
+
+  if (/\bremember\b|\bsave\b/i.test(text)) {
+    confidence += 0.22;
+  }
+
+  if (/\bmy\b|\bi\b/i.test(text)) {
+    confidence += 0.12;
+  }
+
+  if (memoryType === "goal" || memoryType === "learning" || memoryType === "startup") {
+    confidence += 0.12;
+  }
+
+  if (wordCount >= 8) {
+    confidence += 0.08;
+  }
+
+  if (/[?]$/.test(text) || SHORT_QUESTION_PATTERN.test(text)) {
+    confidence -= 0.32;
+  }
+
+  return Number(Math.min(0.98, Math.max(0, confidence)).toFixed(2));
+}
+
+function shouldSaveAsLongTermMemory(message: string) {
+  const text = message.trim();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+  if (!text || wordCount < 4) {
+    return false;
+  }
+
+  if (/[?]$/.test(text) && SHORT_QUESTION_PATTERN.test(text)) {
+    return false;
+  }
+
+  return DURABLE_MEMORY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function cleanDurableMemoryText(message: string) {
+  return message
+    .trim()
+    .replace(/^remember\s+(that\s+)?/i, "")
+    .replace(/^save\s+(this|that)\s*(as\s+)?/i, "")
+    .trim();
 }
 
 function getMessageIntent(message: string) {
@@ -285,7 +377,11 @@ function getFirstSignal(items: string[], fallback: string) {
 }
 
 export function generateMemoryInsights(memories: Memory[]): MemoryInsight {
-  if (!memories.length) {
+  const longTermMemories = memories.filter(
+    (memory) => !memory.is_archived && !memory.is_temporary
+  );
+
+  if (!longTermMemories.length) {
     return {
       activity: {
         activeDays: 0,
@@ -329,7 +425,7 @@ export function generateMemoryInsights(memories: Memory[]): MemoryInsight {
   const categoryStats = new Map<string, { count: number; importanceTotal: number }>();
   const themeCounts = new Map<string, number>();
 
-  for (const memory of memories) {
+  for (const memory of longTermMemories) {
     const category = memory.category || "general";
     const current = categoryStats.get(category) ?? {
       count: 0,
@@ -367,13 +463,13 @@ export function generateMemoryInsights(memories: Memory[]): MemoryInsight {
     .map(([theme]) => theme);
   const categoryNames = categories.map((category) => category.name);
   const topInterests = getTopInterests(repeatedThemes, categoryNames);
-  const currentGoals = getCurrentGoals(memories);
-  const activity = getActivityInsight(memories);
+  const currentGoals = getCurrentGoals(longTermMemories);
+  const activity = getActivityInsight(longTermMemories);
   const scores = {
-    aiFocus: scoreConcept(memories, CONCEPT_KEYWORDS.aiFocus),
-    learning: scoreConcept(memories, CONCEPT_KEYWORDS.learning),
-    productivity: scoreConcept(memories, CONCEPT_KEYWORDS.productivity),
-    startup: scoreConcept(memories, CONCEPT_KEYWORDS.startup)
+    aiFocus: scoreConcept(longTermMemories, CONCEPT_KEYWORDS.aiFocus),
+    learning: scoreConcept(longTermMemories, CONCEPT_KEYWORDS.learning),
+    productivity: scoreConcept(longTermMemories, CONCEPT_KEYWORDS.productivity),
+    startup: scoreConcept(longTermMemories, CONCEPT_KEYWORDS.startup)
   };
   const topCategory = categories[0]?.name ?? "general";
   const topTheme = getFirstSignal(topInterests, topCategory);
@@ -413,9 +509,9 @@ export function generateMemoryInsights(memories: Memory[]): MemoryInsight {
     repeatedThemes,
     scores,
     suggestedNextStep,
-    summary: `I found ${memories.length} saved ${memories.length === 1 ? "memory" : "memories"}, with the strongest signal around "${topCategory}".`,
+    summary: `I found ${longTermMemories.length} saved long-term ${longTermMemories.length === 1 ? "memory" : "memories"}, with the strongest signal around "${topCategory}".`,
     topInterests,
-    totalMemories: memories.length,
+    totalMemories: longTermMemories.length,
     weeklyFocus
   };
 }
@@ -484,11 +580,28 @@ export async function generateChatReply(
 }
 
 export async function extractLongTermMemories(message: string): Promise<MemoryDraft[]> {
+  if (!shouldSaveAsLongTermMemory(message)) {
+    return [];
+  }
+
+  const memoryText = cleanDurableMemoryText(message);
+  const memoryType = classifyMemoryType(memoryText);
+  const confidence = getMemoryConfidence(message, memoryType);
+
+  if (confidence < 0.55) {
+    return [];
+  }
+
   return [
     {
-      memory_text: message,
-      category: "general",
-      importance: 5
+      memory_text: memoryText,
+      category: getCategoryFromMemoryType(memoryType),
+      confidence,
+      importance: memoryType === "goal" ? 5 : 4,
+      is_archived: false,
+      is_pinned: memoryType === "goal",
+      is_temporary: false,
+      memory_type: memoryType
     }
   ];
 }

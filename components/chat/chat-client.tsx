@@ -787,7 +787,7 @@ export function ChatClient() {
       });
       const data = (await response.json()) as ChatResponse;
 
-      if (!response.ok || data.error || data.saved === false) {
+      if (!response.ok || data.error) {
         throw new Error(data.error ?? "The chat request failed.");
       }
 
@@ -1130,7 +1130,8 @@ export function ChatClient() {
               ))
             ) : (
               <p className="rounded-md border border-dashed border-emerald-300/20 bg-slate-950/50 px-3 py-4 text-sm leading-6 text-slate-500">
-                The latest saved chat memory will appear here.
+                Durable saved memories from chat will appear here. Questions stay
+                as chat messages only.
               </p>
             )}
           </div>

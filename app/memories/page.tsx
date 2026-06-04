@@ -22,7 +22,8 @@ export default function MemoriesPage() {
             Memories Dashboard
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-            Browse, search, and inspect every memory saved in Supabase mock mode.
+            Browse, search, and inspect saved long-term, pinned, temporary, and
+            archived memories.
           </p>
         </div>
 

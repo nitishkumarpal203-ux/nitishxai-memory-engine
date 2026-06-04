@@ -7,12 +7,27 @@ create table if not exists public.memories (
   memory_text text not null,
   category text not null default 'general',
   importance integer not null default 5 check (importance between 1 and 5),
+  confidence numeric not null default 0.7 check (confidence >= 0 and confidence <= 1),
+  memory_type text not null default 'idea'
+    check (memory_type in ('goal', 'learning', 'startup', 'productivity', 'idea')),
+  is_pinned boolean not null default false,
+  is_archived boolean not null default false,
+  is_temporary boolean not null default false,
   embedding vector(1536),
   created_at timestamptz not null default now()
 );
 
 alter table public.memories
   add column if not exists embedding vector(1536);
+
+alter table public.memories
+  add column if not exists confidence numeric not null default 0.7
+    check (confidence >= 0 and confidence <= 1),
+  add column if not exists memory_type text not null default 'idea'
+    check (memory_type in ('goal', 'learning', 'startup', 'productivity', 'idea')),
+  add column if not exists is_pinned boolean not null default false,
+  add column if not exists is_archived boolean not null default false,
+  add column if not exists is_temporary boolean not null default false;
 
 alter table public.memories enable row level security;
 
@@ -49,6 +64,14 @@ create policy "Users can delete own memories"
 create index if not exists memories_user_created_at_idx
   on public.memories (user_id, created_at desc);
 
+create index if not exists memories_user_active_created_at_idx
+  on public.memories (user_id, is_pinned desc, created_at desc)
+  where is_archived = false and is_temporary = false;
+
+create index if not exists memories_user_type_idx
+  on public.memories (user_id, memory_type, confidence desc)
+  where is_archived = false and is_temporary = false;
+
 create index if not exists memories_user_memory_text_idx
   on public.memories (user_id, memory_text);
 
@@ -56,6 +79,8 @@ create index if not exists memories_embedding_idx
   on public.memories
   using hnsw (embedding vector_cosine_ops)
   where embedding is not null;
+
+drop function if exists public.match_memories(text, vector, int);
 
 create or replace function public.match_memories(
   match_user_id text,
@@ -68,6 +93,11 @@ returns table (
   memory_text text,
   category text,
   importance integer,
+  confidence numeric,
+  memory_type text,
+  is_pinned boolean,
+  is_archived boolean,
+  is_temporary boolean,
   created_at timestamptz,
   similarity double precision
 )
@@ -80,11 +110,18 @@ as $$
     memories.memory_text,
     memories.category,
     memories.importance,
+    memories.confidence,
+    memories.memory_type,
+    memories.is_pinned,
+    memories.is_archived,
+    memories.is_temporary,
     memories.created_at,
     1 - (memories.embedding <=> query_embedding) as similarity
   from public.memories
   where memories.user_id = match_user_id
     and memories.embedding is not null
+    and memories.is_archived = false
+    and memories.is_temporary = false
   order by memories.embedding <=> query_embedding
   limit greatest(1, least(coalesce(match_count, 50), 50));
 $$;

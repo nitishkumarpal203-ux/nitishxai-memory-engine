@@ -7,8 +7,10 @@ import {
   Filter,
   Loader2,
   Network,
+  Pin,
   Search,
   SignalHigh,
+  Tags,
   X
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -191,7 +193,9 @@ function getKeywordOverlap(a: string[], b: string[]) {
 }
 
 function getSemanticProfile(memory: Memory) {
-  const terms = new Set(tokenize(`${memory.memory_text} ${memory.category}`));
+  const terms = new Set(
+    tokenize(`${memory.memory_text} ${memory.category} ${memory.memory_type}`)
+  );
 
   return SEMANTIC_GROUPS.map((group) =>
     group.reduce((score, keyword) => score + (terms.has(keyword) ? 1 : 0), 0)
@@ -247,7 +251,10 @@ function buildGraph(memories: Memory[]) {
     const categoryIndex = Math.max(0, categories.indexOf(memory.category));
     const ringOffset = categoryIndex % 2 === 0 ? 0 : 38;
 
-    tokenMap.set(memory.id, tokenize(`${memory.memory_text} ${memory.category}`));
+    tokenMap.set(
+      memory.id,
+      tokenize(`${memory.memory_text} ${memory.category} ${memory.memory_type}`)
+    );
     semanticMap.set(memory.id, getSemanticProfile(memory));
 
     return {
@@ -728,6 +735,19 @@ export function MemoryGraph() {
                 <SignalHigh className="h-3.5 w-3.5" aria-hidden="true" />
                 {selectedMemory.importance}/5
               </span>
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+                <Tags className="h-3.5 w-3.5" aria-hidden="true" />
+                {selectedMemory.memory_type}
+              </span>
+              <span className="rounded-md border border-slate-500/30 bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-300">
+                {Math.round(selectedMemory.confidence * 100)}% confidence
+              </span>
+              {selectedMemory.is_pinned ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                  <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+                  pinned
+                </span>
+              ) : null}
               <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-300/20 bg-violet-300/10 px-2.5 py-1 text-xs font-semibold text-violet-200">
                 <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
                 {formatter.format(new Date(selectedMemory.created_at))}

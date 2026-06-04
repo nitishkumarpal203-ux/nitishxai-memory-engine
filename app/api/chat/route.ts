@@ -3,9 +3,13 @@ import {
   isAuthRequiredError,
   requireAuthenticatedUser
 } from "@/lib/auth/server";
-import { generateChatReply, generateMemoryInsightReply } from "@/lib/ai";
+import {
+  extractLongTermMemories,
+  generateChatReply,
+  generateMemoryInsightReply
+} from "@/lib/ai";
 import { isMissingConfigError } from "@/lib/env";
-import { findRelevantMemories, listMemories, saveMemory } from "@/lib/memories";
+import { findRelevantMemories, listMemories, saveMemories } from "@/lib/memories";
 import type { Memory } from "@/types/memory";
 
 export const runtime = "nodejs";
@@ -67,7 +71,8 @@ export async function POST(request: Request) {
         : memoriesForInsight.slice(0, 5);
     }
 
-    const savedMemory = await saveMemory(user.id, message);
+    const memoryDrafts = await extractLongTermMemories(message);
+    const savedMemories = await saveMemories(user.id, memoryDrafts);
 
     return NextResponse.json(
       {
@@ -75,8 +80,8 @@ export async function POST(request: Request) {
         mode: useInsightMode ? "insight" : "chat",
         relevantMemories,
         reply,
-        savedMemories: [savedMemory],
-        saved: true
+        saved: savedMemories.length > 0,
+        savedMemories
       },
       { status: 200 }
     );

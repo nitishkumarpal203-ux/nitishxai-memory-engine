@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth/server";
 import { isMissingConfigError } from "@/lib/env";
 import { deleteMemory, updateMemory } from "@/lib/memories";
+import type { MemoryType } from "@/types/memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +25,32 @@ function cleanMemoryPayload(body: unknown) {
   const importance = Number.isFinite(rawImportance)
     ? Math.min(5, Math.max(1, Math.round(rawImportance)))
     : 5;
+  const rawConfidence =
+    typeof record.confidence === "number"
+      ? record.confidence
+      : Number(record.confidence);
+  const confidence = Number.isFinite(rawConfidence)
+    ? Math.min(1, Math.max(0, rawConfidence))
+    : 0.7;
+  const memoryTypes: MemoryType[] = [
+    "goal",
+    "learning",
+    "startup",
+    "productivity",
+    "idea"
+  ];
+  const memoryType = memoryTypes.includes(record.memory_type as MemoryType)
+    ? (record.memory_type as MemoryType)
+    : "idea";
 
   return {
     category,
+    confidence,
     importance,
+    is_archived: Boolean(record.is_archived),
+    is_pinned: Boolean(record.is_pinned),
+    is_temporary: Boolean(record.is_temporary),
+    memory_type: memoryType,
     memory_text: memoryText
   };
 }

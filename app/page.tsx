@@ -72,14 +72,16 @@ export default function HomePage() {
         throw new Error(data.error ?? "The chat API failed.");
       }
 
-      if (data.error || data.saved === false) {
+      if (data.error) {
         throw new Error(data.error ?? "The chat API failed.");
       }
 
       setReply(data.reply ?? "");
       setRelevantMemories(data.relevantMemories ?? []);
       setSavedMemories(data.savedMemories ?? []);
-      setSavedMessage("Memory saved successfully.");
+      setSavedMessage(
+        data.saved ? "Long-term memory saved." : "Chat sent. No long-term memory was created."
+      );
 
       setMessage("");
     } catch (requestError) {
@@ -107,8 +109,9 @@ export default function HomePage() {
               AI Memory Chat
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              Send a message to the memory engine. Saved memories are searched
-              locally before each contextual reply, then your new memory is stored.
+              Send a message to the memory engine. Saved long-term memories are
+              searched locally before each contextual reply, and durable facts are
+              stored only when detected.
             </p>
           </div>
 
