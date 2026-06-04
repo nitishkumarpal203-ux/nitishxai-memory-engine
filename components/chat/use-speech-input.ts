@@ -68,9 +68,11 @@ function mergeTranscript(baseText: string, transcript: string) {
 }
 
 export function useSpeechInput({
+  onAutoSubmit,
   onChange,
   value
 }: {
+  onAutoSubmit?: (value: string) => void;
   onChange: (value: string) => void;
   value: string;
 }) {
@@ -81,7 +83,13 @@ export function useSpeechInput({
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const baseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+  const onAutoSubmitRef = useRef(onAutoSubmit);
+  const shouldSubmitOnEndRef = useRef(false);
   const valueRef = useRef(value);
+
+  useEffect(() => {
+    onAutoSubmitRef.current = onAutoSubmit;
+  }, [onAutoSubmit]);
 
   useEffect(() => {
     valueRef.current = value;
@@ -95,6 +103,7 @@ export function useSpeechInput({
         clearTimeout(silenceTimerRef.current);
       }
 
+      shouldSubmitOnEndRef.current = false;
       recognitionRef.current?.abort();
     };
   }, []);
@@ -131,18 +140,24 @@ export function useSpeechInput({
       return;
     }
 
+    shouldSubmitOnEndRef.current = false;
     recognitionRef.current?.abort();
 
     const recognition = new Recognition();
 
     baseTextRef.current = valueRef.current;
     finalTranscriptRef.current = "";
+    shouldSubmitOnEndRef.current = true;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognitionRef.current = recognition;
 
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
+
       let interimTranscript = "";
 
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -167,6 +182,10 @@ export function useSpeechInput({
     };
 
     recognition.onerror = (event) => {
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
+
       const message =
         event.error === "not-allowed"
           ? "Microphone permission was denied."
@@ -177,17 +196,33 @@ export function useSpeechInput({
         silenceTimerRef.current = null;
       }
 
+      shouldSubmitOnEndRef.current = false;
       setIsListening(false);
       setStatus(message);
     };
 
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) {
+        return;
+      }
+
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
 
       setIsListening(false);
+
+      const capturedText = finalTranscriptRef.current.trim();
+
+      if (shouldSubmitOnEndRef.current && capturedText) {
+        onAutoSubmitRef.current?.(
+          mergeTranscript(baseTextRef.current, capturedText)
+        );
+      }
+
+      shouldSubmitOnEndRef.current = false;
+      recognitionRef.current = null;
     };
 
     try {

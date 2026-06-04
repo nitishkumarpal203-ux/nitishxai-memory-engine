@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import {
   Activity,
+  AudioLines,
   BookOpen,
   Brain,
   Bot,
@@ -19,6 +20,8 @@ import {
   Send,
   Sparkles,
   Target,
+  Volume2,
+  VolumeX,
   Wand2
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -99,6 +102,57 @@ function createMessageId() {
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function AssistantVoiceOrb({
+  isListening,
+  isSending,
+  isSpeaking,
+  isVoiceMode
+}: {
+  isListening: boolean;
+  isSending: boolean;
+  isSpeaking: boolean;
+  isVoiceMode: boolean;
+}) {
+  const isActive = isListening || isSpeaking || isSending;
+  const label = isSpeaking
+    ? "Speaking"
+    : isListening
+      ? "Listening"
+      : isSending
+        ? "Thinking"
+        : isVoiceMode
+          ? "Voice ready"
+          : "Voice off";
+
+  return (
+    <div className="inline-flex items-center gap-3 rounded-md border border-cyan-300/15 bg-slate-950/60 px-3 py-2">
+      <span
+        className={[
+          "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border",
+          isActive
+            ? "border-cyan-200 bg-cyan-300 text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.45)]"
+            : "border-cyan-300/25 bg-cyan-300/10 text-cyan-100"
+        ].join(" ")}
+        aria-hidden="true"
+      >
+        {isActive ? (
+          <span className="absolute inset-0 rounded-full bg-cyan-300/30 blur-md animate-pulse" />
+        ) : null}
+        {isSpeaking ? (
+          <span className="absolute -inset-1 rounded-full border border-cyan-200/40 animate-ping" />
+        ) : null}
+        <AudioLines className="relative h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold text-cyan-100">
+          Voice Assistant
+        </span>
+        <span className="block text-xs text-slate-500">{label}</span>
+      </span>
+    </div>
+  );
 }
 
 function MemoryInsightPanel({ insight }: { insight: MemoryInsight }) {
@@ -427,26 +481,138 @@ export function ChatClient() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeechSynthesisSupported, setIsSpeechSynthesisSupported] =
+    useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [proactiveInsight, setProactiveInsight] = useState<MemoryInsight | null>(
     null
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeTypingRef = useRef<{ fullText: string; id: string } | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const {
     isListening,
     isSupported: isVoiceSupported,
     status: voiceStatus,
     toggleListening
   } = useSpeechInput({
+    onAutoSubmit: (spokenMessage) => {
+      if (isVoiceMode) {
+        void sendMessage(spokenMessage);
+      }
+    },
     onChange: setInput,
     value: input
   });
+
+  const stopTyping = useCallback((completeActiveMessage = false) => {
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+
+    if (completeActiveMessage && activeTypingRef.current) {
+      const { fullText, id } = activeTypingRef.current;
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === id ? { ...message, text: fullText } : message
+        )
+      );
+    }
+
+    activeTypingRef.current = null;
+  }, []);
+
+  const streamAssistantText = useCallback(
+    (id: string, fullText: string) => {
+      stopTyping(true);
+
+      if (!fullText) {
+        return;
+      }
+
+      activeTypingRef.current = { fullText, id };
+      let visibleCharacters = 0;
+
+      typingTimerRef.current = setInterval(() => {
+        visibleCharacters = Math.min(fullText.length, visibleCharacters + 4);
+        const visibleText = fullText.slice(0, visibleCharacters);
+
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === id ? { ...message, text: visibleText } : message
+          )
+        );
+
+        if (visibleCharacters >= fullText.length) {
+          stopTyping(false);
+        }
+      }, 18);
+    },
+    [stopTyping]
+  );
+
+  const speakReply = useCallback(
+    (reply: string) => {
+      if (
+        !isVoiceMode ||
+        !isSpeechSynthesisSupported ||
+        typeof window === "undefined"
+      ) {
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(reply);
+      utterance.rate = 1;
+      utterance.pitch = 1.02;
+      utterance.volume = 0.95;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    },
+    [isSpeechSynthesisSupported, isVoiceMode]
+  );
 
   const latestAssistant = useMemo(
     () => [...messages].reverse().find((message) => message.role === "assistant"),
     [messages]
   );
+
+  useEffect(() => {
+    const canSpeak =
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      "SpeechSynthesisUtterance" in window;
+
+    setIsSpeechSynthesisSupported(canSpeak);
+
+    return () => {
+      stopTyping(false);
+
+      if (canSpeak) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [stopTyping]);
+
+  useEffect(() => {
+    if (
+      !isVoiceMode &&
+      isSpeechSynthesisSupported &&
+      typeof window !== "undefined"
+    ) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, [isSpeechSynthesisSupported, isVoiceMode]);
 
   const fetchInsights = useCallback(async () => {
     if (!accessToken) {
@@ -533,18 +699,23 @@ export function ChatClient() {
         throw new Error(data.error ?? "The chat request failed.");
       }
 
+      const assistantMessageId = createMessageId();
+      const assistantReply = data.reply ?? "I could not generate a local reply.";
+
       setMessages((current) => [
         ...current,
         {
-          id: createMessageId(),
+          id: assistantMessageId,
           insight: data.insight ?? null,
           mode: data.mode ?? mode,
           relevantMemories: data.relevantMemories ?? [],
           role: "assistant",
           savedMemories: data.savedMemories ?? [],
-          text: data.reply ?? "I could not generate a local reply."
+          text: ""
         }
       ]);
+      streamAssistantText(assistantMessageId, assistantReply);
+      speakReply(assistantReply);
       void fetchInsights();
     } catch (requestError) {
       setError(
@@ -576,10 +747,38 @@ export function ChatClient() {
               Local replies powered by your saved long-term memories
             </p>
           </div>
-          <span className="inline-flex w-fit items-center gap-2 rounded-md border border-violet-300/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-            No external AI APIs
-          </span>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <AssistantVoiceOrb
+                isListening={isListening}
+                isSending={isSending}
+                isSpeaking={isSpeaking}
+                isVoiceMode={isVoiceMode}
+              />
+              <button
+                type="button"
+                onClick={() => setIsVoiceMode((current) => !current)}
+                className={[
+                  "inline-flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition",
+                  isVoiceMode
+                    ? "border-cyan-300/35 bg-cyan-300/10 text-cyan-100 hover:border-cyan-300/60"
+                    : "border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-500"
+                ].join(" ")}
+                aria-pressed={isVoiceMode}
+              >
+                {isVoiceMode ? (
+                  <Volume2 className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <VolumeX className="h-4 w-4" aria-hidden="true" />
+                )}
+                {isVoiceMode ? "Voice On" : "Voice Off"}
+              </button>
+            </div>
+            <span className="inline-flex w-fit items-center gap-2 rounded-md border border-violet-300/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              No external AI APIs
+            </span>
+          </div>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-5">
@@ -603,7 +802,12 @@ export function ChatClient() {
                       : "border border-cyan-300/15 bg-slate-950/76 text-slate-100"
                   ].join(" ")}
                 >
-                  <p className="whitespace-pre-wrap">{message.text}</p>
+                  <p className="whitespace-pre-wrap">
+                    {message.text}
+                    {activeTypingRef.current?.id === message.id ? (
+                      <span className="ml-1 inline-block h-4 w-1 translate-y-0.5 animate-pulse rounded-full bg-cyan-300" />
+                    ) : null}
+                  </p>
 
                   {message.insight ? (
                     <MemoryInsightPanel insight={message.insight} />
@@ -684,7 +888,9 @@ export function ChatClient() {
               <button
                 type="button"
                 onClick={toggleListening}
-                disabled={isSending || !isVoiceSupported}
+                disabled={
+                  isSending || isAuthLoading || !isAuthenticated || !isVoiceSupported
+                }
                 className={[
                   "relative inline-flex min-h-12 w-14 items-center justify-center overflow-visible rounded-md border text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
                   isListening
@@ -692,7 +898,13 @@ export function ChatClient() {
                     : "border-cyan-300/25 bg-cyan-300/10 text-cyan-100 hover:border-cyan-300/55 hover:bg-cyan-300/20"
                 ].join(" ")}
                 aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                title={isListening ? "Stop voice input" : "Start voice input"}
+                title={
+                  isListening
+                    ? "Stop voice input"
+                    : isVoiceMode
+                      ? "Start voice input and auto-send"
+                      : "Start voice input"
+                }
               >
                 {isListening ? (
                   <span className="absolute inset-0 rounded-md bg-cyan-300/25 blur-md animate-pulse" />
@@ -729,6 +941,12 @@ export function ChatClient() {
                 aria-hidden="true"
               />
               {voiceStatus}
+            </div>
+          ) : null}
+          {isVoiceMode && !isSpeechSynthesisSupported ? (
+            <div className="mt-3 rounded-md border border-amber-300/20 bg-amber-950/30 px-3 py-2 text-xs leading-5 text-amber-100">
+              Voice replies are not supported in this browser, but chat and memory
+              search still work.
             </div>
           ) : null}
         </form>
