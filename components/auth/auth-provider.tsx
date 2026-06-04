@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setSession(null);
       setIsLoading(false);
+
       return () => {
         isMounted = false;
       };
@@ -65,12 +66,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const supabase = getSupabaseBrowser();
+
     const redirectTo = `${window.location.origin}/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo
+        redirectTo,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent"
+        }
       }
     });
 
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = getSupabaseBrowser();
+
     const { error } = await supabase.auth.signOut();
 
     if (error) {
