@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 export function AuthCallback() {
-  const searchParams = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -14,21 +12,8 @@ export function AuthCallback() {
 
     async function finishSignIn() {
       const supabase = getSupabaseBrowser();
-      const code = searchParams.get("code");
-      const target = `${window.location.origin}/chat`;
 
       try {
-        if (code) {
-          const { error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code);
-
-          if (exchangeError) {
-            throw exchangeError;
-          }
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 800));
-
         const { data, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError) {
@@ -37,11 +22,11 @@ export function AuthCallback() {
 
         if (!data.session) {
           throw new Error(
-            "No Supabase session was created. Please start sign in again."
+            "Google sign in completed, but Supabase did not return a session. Please try again."
           );
         }
 
-        window.location.replace(target);
+        window.location.replace(`${window.location.origin}/chat`);
       } catch (callbackError) {
         if (!isMounted) return;
 
@@ -58,7 +43,7 @@ export function AuthCallback() {
     return () => {
       isMounted = false;
     };
-  }, [searchParams]);
+  }, []);
 
   return (
     <div className="relative min-h-[calc(100vh-81px)] overflow-hidden bg-slate-950 px-4 py-10 text-slate-100 sm:px-6 lg:px-8">
@@ -76,7 +61,8 @@ export function AuthCallback() {
             {error ? "Sign in needs attention" : "Completing Google sign in"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-400">
-            {error || "Hold tight while Supabase restores your authenticated session."}
+            {error ||
+              "Hold tight while Supabase restores your authenticated session."}
           </p>
         </section>
       </main>

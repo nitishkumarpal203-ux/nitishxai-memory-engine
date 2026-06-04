@@ -22,8 +22,8 @@ export function getSupabaseBrowser() {
     auth: {
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      persistSession: true,
       flowType: "implicit"
-      persistSession: true
     }
   });
 
