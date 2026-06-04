@@ -4,10 +4,56 @@ import {
   requireAuthenticatedUser
 } from "@/lib/auth/server";
 import { isMissingConfigError } from "@/lib/env";
-import { listMemories } from "@/lib/memories";
+import { listMemories, saveMemories } from "@/lib/memories";
+import type { MemoryDraft, MemoryType } from "@/types/memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const memoryTypes: MemoryType[] = [
+  "goal",
+  "learning",
+  "startup",
+  "productivity",
+  "idea"
+];
+
+function clampImportance(value: unknown) {
+  const importance = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(importance)) {
+    return 5;
+  }
+
+  return Math.min(5, Math.max(1, Math.round(importance)));
+}
+
+function normalizeMemoryType(value: unknown): MemoryType {
+  return memoryTypes.includes(value as MemoryType) ? (value as MemoryType) : "idea";
+}
+
+function getCreateMemoryDraft(body: unknown): MemoryDraft {
+  const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const memoryText =
+    typeof record.memory_text === "string" ? record.memory_text.trim() : "";
+  const category =
+    typeof record.category === "string" && record.category.trim()
+      ? record.category.trim()
+      : "general";
+  const memoryType = normalizeMemoryType(record.memory_type);
+
+  return {
+    memory_text: memoryText,
+    category,
+    confidence: 0.95,
+    importance: clampImportance(record.importance),
+    is_archived: false,
+    is_pinned: Boolean(record.is_pinned),
+    is_temporary: false,
+    memory_type: memoryType,
+    source: "memory"
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -74,5 +120,54 @@ export async function GET(request: Request) {
       : "Memories could not be loaded.";
 
     return NextResponse.json({ error: message, memories: [] }, { status: 200 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = await requireAuthenticatedUser(request);
+    const draft = getCreateMemoryDraft(await request.json());
+
+    if (!draft.memory_text) {
+      return NextResponse.json(
+        {
+          created: false,
+          error: "Memory text is required."
+        },
+        { status: 400 }
+      );
+    }
+
+    const [memory] = await saveMemories(user.id, [draft]);
+
+    return NextResponse.json(
+      {
+        created: true,
+        memory
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      return NextResponse.json(
+        {
+          created: false,
+          error: "Please sign in to add memories."
+        },
+        { status: 401 }
+      );
+    }
+
+    const message = isMissingConfigError(error)
+      ? "Missing Supabase configuration. Check .env.local and restart the dev server."
+      : "Memory could not be saved.";
+
+    return NextResponse.json(
+      {
+        created: false,
+        error: message
+      },
+      { status: 500 }
+    );
   }
 }

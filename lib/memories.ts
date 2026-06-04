@@ -71,6 +71,8 @@ type MemoryListStatus = "active" | "all" | "archived" | "pinned" | "temporary";
 
 const MEMORY_SELECT =
   "id, user_id, memory_text, category, importance, confidence, memory_type, source, is_pinned, is_archived, is_temporary, created_at";
+const MEMORY_SELECT_WITHOUT_SOURCE =
+  "id, user_id, memory_text, category, importance, confidence, memory_type, is_pinned, is_archived, is_temporary, created_at";
 const LEGACY_MEMORY_SELECT =
   "id, user_id, memory_text, category, importance, created_at";
 const MEMORY_SOURCE: MemorySource = "memory";
@@ -126,11 +128,21 @@ function normalizeMemoryType(value: unknown): MemoryType {
   return MEMORY_TYPES.includes(value as MemoryType) ? (value as MemoryType) : "idea";
 }
 
-function normalizeMemorySource(value: unknown): MemorySource {
-  return value === MEMORY_SOURCE ? "memory" : "chat";
+function normalizeMemorySource(
+  value: unknown,
+  fallbackSource: MemorySource = "chat"
+): MemorySource {
+  if (value === "memory" || value === "chat") {
+    return value;
+  }
+
+  return fallbackSource;
 }
 
-function normalizeMemory(row: MemoryRow): Memory {
+function normalizeMemory(
+  row: MemoryRow,
+  fallbackSource: MemorySource = "chat"
+): Memory {
   return {
     id: row.id,
     user_id: row.user_id,
@@ -142,7 +154,7 @@ function normalizeMemory(row: MemoryRow): Memory {
     is_pinned: Boolean(row.is_pinned),
     is_temporary: Boolean(row.is_temporary),
     memory_type: normalizeMemoryType(row.memory_type),
-    source: normalizeMemorySource(row.source),
+    source: normalizeMemorySource(row.source, fallbackSource),
     created_at: row.created_at,
     similarity: row.similarity ?? null
   };
@@ -223,9 +235,11 @@ async function semanticSearchMemories(
       throw error;
     }
 
-      const memories = (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
+    const memories = (data ?? []).map((row: MemoryRow) =>
+      normalizeMemory(row, MEMORY_SOURCE)
+    );
 
-      if (memories.length) {
+    if (memories.length) {
       return rankSemanticMatches(query, memories, limit);
     }
   } catch {
@@ -254,6 +268,7 @@ export async function listMemories({
 
   await backfillMissingEmbeddings(userId);
 
+  const trimmedQuery = query?.trim() ?? "";
   let request = getSupabaseAdmin()
     .from("memories")
     .select(MEMORY_SELECT)
@@ -275,17 +290,80 @@ export async function listMemories({
       .eq("is_temporary", false);
   }
 
-  if (query?.trim()) {
-    request = request.ilike("memory_text", `%${query.trim()}%`);
+  if (trimmedQuery) {
+    request = request.ilike("memory_text", `%${trimmedQuery}%`);
   }
 
   const { data, error } = await request;
 
-  if (error) {
-    throw error;
+  if (!error) {
+    return (data ?? []).map((row: MemoryRow) =>
+      normalizeMemory(row, MEMORY_SOURCE)
+    );
   }
 
-  return (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
+  let noSourceRequest = getSupabaseAdmin()
+    .from("memories")
+    .select(MEMORY_SELECT_WITHOUT_SOURCE)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (status === "active") {
+    noSourceRequest = noSourceRequest
+      .eq("is_archived", false)
+      .eq("is_temporary", false);
+  } else if (status === "archived") {
+    noSourceRequest = noSourceRequest.eq("is_archived", true);
+  } else if (status === "temporary") {
+    noSourceRequest = noSourceRequest.eq("is_temporary", true);
+  } else if (status === "pinned") {
+    noSourceRequest = noSourceRequest
+      .eq("is_pinned", true)
+      .eq("is_archived", false)
+      .eq("is_temporary", false);
+  }
+
+  if (trimmedQuery) {
+    noSourceRequest = noSourceRequest.ilike("memory_text", `%${trimmedQuery}%`);
+  }
+
+  const { data: noSourceData, error: noSourceError } = await noSourceRequest;
+
+  if (!noSourceError) {
+    return (noSourceData ?? []).map((row: MemoryRow) =>
+      normalizeMemory(row, MEMORY_SOURCE)
+    );
+  }
+
+  if (
+    status === "archived" ||
+    status === "pinned" ||
+    status === "temporary"
+  ) {
+    return [];
+  }
+
+  let legacyRequest = getSupabaseAdmin()
+    .from("memories")
+    .select(LEGACY_MEMORY_SELECT)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (trimmedQuery) {
+    legacyRequest = legacyRequest.ilike("memory_text", `%${trimmedQuery}%`);
+  }
+
+  const { data: legacyData, error: legacyError } = await legacyRequest;
+
+  if (legacyError) {
+    throw legacyError;
+  }
+
+  return (legacyData ?? []).map((row: MemoryRow) =>
+    normalizeMemory(row, MEMORY_SOURCE)
+  );
 }
 
 export async function listAllLongTermMemories({
@@ -426,6 +504,18 @@ function getFallbackPatch(patch: MemoryPatch) {
   };
 }
 
+function getNoSourceInsert(memory: MemoryInsert) {
+  const { source: _source, ...row } = memory;
+
+  return row;
+}
+
+function getNoSourcePatch(memory: MemoryPatch) {
+  const { source: _source, ...patch } = memory;
+
+  return patch;
+}
+
 function normalizeUpdatedMemory(memory: MemoryUpdate): MemoryUpdate {
   return {
     memory_text: memory.memory_text.trim(),
@@ -450,8 +540,9 @@ function mergeLegacyUpdateFallback(
     is_archived: requested.is_archived,
     is_pinned: requested.is_pinned,
     is_temporary: requested.is_temporary,
-    memory_type: requested.memory_type
-  });
+    memory_type: requested.memory_type,
+    source: requested.source ?? MEMORY_SOURCE
+  }, MEMORY_SOURCE);
 }
 
 function mergeLegacyInsertFallback(fallbackData: MemoryRow, requested: MemoryDraft) {
@@ -461,8 +552,9 @@ function mergeLegacyInsertFallback(fallbackData: MemoryRow, requested: MemoryDra
     is_archived: requested.is_archived,
     is_pinned: requested.is_pinned,
     is_temporary: requested.is_temporary,
-    memory_type: requested.memory_type
-  });
+    memory_type: requested.memory_type,
+    source: requested.source ?? MEMORY_SOURCE
+  }, MEMORY_SOURCE);
 }
 
 function getInsertedRow(memory: MemoryDraft, userId: string, embedding: number[] | null) {
@@ -807,6 +899,16 @@ async function saveMemoryDraft(
     .single();
 
   if (error) {
+    const { data: noSourceData, error: noSourceError } = await getSupabaseAdmin()
+      .from("memories")
+      .insert(getNoSourceInsert(getNoEmbeddingInsert(row)))
+      .select(MEMORY_SELECT_WITHOUT_SOURCE)
+      .single();
+
+    if (!noSourceError) {
+      return normalizeMemory(noSourceData as MemoryRow, MEMORY_SOURCE);
+    }
+
     const { data: fallbackData, error: fallbackError } = await getSupabaseAdmin()
       .from("memories")
       .insert(getFallbackInsert(getNoEmbeddingInsert(row)))
@@ -820,7 +922,7 @@ async function saveMemoryDraft(
     return mergeLegacyInsertFallback(fallbackData as MemoryRow, cleanMemory);
   }
 
-  return normalizeMemory(data as MemoryRow);
+  return normalizeMemory(data as MemoryRow, MEMORY_SOURCE);
 }
 
 export async function deleteMemory(userId: string, id: string) {
@@ -859,6 +961,20 @@ export async function updateMemory(
     .maybeSingle();
 
   if (error) {
+    const { data: noSourceData, error: noSourceError } = await getSupabaseAdmin()
+      .from("memories")
+      .update(getNoSourcePatch(getNoEmbeddingPatch(patch)))
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select(MEMORY_SELECT_WITHOUT_SOURCE)
+      .maybeSingle();
+
+    if (!noSourceError) {
+      return noSourceData
+        ? normalizeMemory(noSourceData as MemoryRow, MEMORY_SOURCE)
+        : null;
+    }
+
     const { data: fallbackData, error: fallbackError } = await getSupabaseAdmin()
       .from("memories")
       .update(getFallbackPatch(getNoEmbeddingPatch(patch)))
@@ -876,5 +992,5 @@ export async function updateMemory(
       : null;
   }
 
-  return data ? normalizeMemory(data as MemoryRow) : null;
+  return data ? normalizeMemory(data as MemoryRow, MEMORY_SOURCE) : null;
 }

@@ -10,6 +10,7 @@ import {
   Pencil,
   Loader2,
   Pin,
+  Plus,
   Save,
   Search,
   SignalHigh,
@@ -38,6 +39,12 @@ type DeleteMemoryResponse = {
 type UpdateMemoryResponse = {
   memory?: Memory | null;
   updated?: boolean;
+  error?: string;
+};
+
+type CreateMemoryResponse = {
+  created?: boolean;
+  memory?: Memory;
   error?: string;
 };
 
@@ -72,9 +79,16 @@ export function MemorySearch() {
   const [statusFilter, setStatusFilter] = useState<MemoryStatusFilter>("active");
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Memory | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
+  const [newMemoryText, setNewMemoryText] = useState("");
+  const [newCategory, setNewCategory] = useState("general");
+  const [newImportance, setNewImportance] = useState(5);
+  const [newIsPinned, setNewIsPinned] = useState(false);
+  const [newMemoryType, setNewMemoryType] = useState<MemoryType>("idea");
   const [editMemoryText, setEditMemoryText] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editConfidence, setEditConfidence] = useState(0.7);
@@ -161,6 +175,88 @@ export function MemorySearch() {
   function handleStatusFilterChange(nextStatus: MemoryStatusFilter) {
     setStatusFilter(nextStatus);
     void fetchMemories(query, isSemanticSearch, nextStatus);
+  }
+
+  function openCreateModal() {
+    setError(null);
+    setNotice(null);
+    setNewMemoryText("");
+    setNewCategory("general");
+    setNewImportance(5);
+    setNewIsPinned(false);
+    setNewMemoryType("idea");
+    setIsCreateModalOpen(true);
+  }
+
+  async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isCreating) {
+      return;
+    }
+
+    if (!accessToken) {
+      setError("Please sign in to add memories.");
+      return;
+    }
+
+    const memoryText = newMemoryText.trim();
+    const category = newCategory.trim() || "general";
+    const importance = Math.min(5, Math.max(1, Math.round(newImportance)));
+
+    if (!memoryText) {
+      setError("Memory text is required.");
+      return;
+    }
+
+    setIsCreating(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/memories", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          category,
+          importance,
+          is_pinned: newIsPinned,
+          memory_text: memoryText,
+          memory_type: newMemoryType
+        })
+      });
+      const data = (await response.json()) as CreateMemoryResponse;
+
+      if (!response.ok || data.error || data.created === false || !data.memory) {
+        throw new Error(data.error ?? "Memory could not be saved.");
+      }
+
+      if (
+        statusFilter === "archived" ||
+        statusFilter === "temporary" ||
+        (statusFilter === "pinned" && !data.memory.is_pinned)
+      ) {
+        setStatusFilter("active");
+      }
+
+      setMemories((current) => [
+        data.memory as Memory,
+        ...current.filter((memory) => memory.id !== data.memory?.id)
+      ]);
+      setIsCreateModalOpen(false);
+      setNotice("Memory added. Semantic search will include it on the next search.");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Memory could not be saved."
+      );
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   function openEditModal(memory: Memory) {
@@ -301,6 +397,14 @@ export function MemorySearch() {
             Keyword or semantic vector search from{" "}
             <span className="text-cyan-300">/api/memories</span>
           </p>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-md border border-cyan-300/35 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 shadow-[0_0_24px_rgba(103,232,249,0.12)] transition hover:border-cyan-300/70 hover:bg-cyan-300 hover:text-slate-950"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Memory
+          </button>
         </div>
 
         <form onSubmit={handleSearch} className="flex w-full flex-col gap-3 lg:max-w-2xl">
@@ -482,11 +586,154 @@ export function MemorySearch() {
         <div className="mt-5 rounded-lg border border-dashed border-cyan-300/20 bg-slate-950/50 px-4 py-12 text-center">
           <p className="text-sm font-medium text-slate-200">No memories found.</p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Save a durable goal, interest, project idea, or preference in chat,
-            then refresh this dashboard.
+            Add a durable goal, interest, project idea, or preference to start
+            building your long-term memory layer.
           </p>
         </div>
       )}
+
+      {isCreateModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-memory-title"
+        >
+          <form
+            onSubmit={handleCreateSubmit}
+            className="w-full max-w-lg rounded-lg border border-cyan-300/20 bg-slate-950 p-4 shadow-2xl shadow-cyan-950/40 sm:p-5"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-cyan-300/20 bg-cyan-400/10 text-cyan-200">
+                  <Plus className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 id="create-memory-title" className="text-base font-semibold text-white">
+                    Add memory
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    Save a long-term memory for chat, insights, graph, and semantic search.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isCreating}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-300/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close add memory dialog"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label htmlFor="new-memory-text" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                  memory text
+                </label>
+                <textarea
+                  id="new-memory-text"
+                  value={newMemoryText}
+                  onChange={(event) => setNewMemoryText(event.target.value)}
+                  disabled={isCreating}
+                  placeholder="Example: I want to build AI tools for startup founders."
+                  className="mt-2 min-h-32 w-full resize-none rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+                <div>
+                  <label htmlFor="new-category" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    category
+                  </label>
+                  <input
+                    id="new-category"
+                    value={newCategory}
+                    onChange={(event) => setNewCategory(event.target.value)}
+                    disabled={isCreating}
+                    className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="new-importance" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    importance
+                  </label>
+                  <input
+                    id="new-importance"
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={newImportance}
+                    onChange={(event) => setNewImportance(Number(event.target.value))}
+                    disabled={isCreating}
+                    className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+                <div>
+                  <label htmlFor="new-memory-type" className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+                    memory type
+                  </label>
+                  <select
+                    id="new-memory-type"
+                    value={newMemoryType}
+                    onChange={(event) =>
+                      setNewMemoryType(event.target.value as MemoryType)
+                    }
+                    disabled={isCreating}
+                    className="mt-2 h-11 w-full rounded-md border border-cyan-300/20 bg-slate-900/80 px-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {memoryTypes.map((memoryType) => (
+                      <option key={memoryType} value={memoryType}>
+                        {memoryType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <label className="mt-0 flex min-h-11 items-center gap-2 rounded-md border border-amber-300/15 bg-amber-300/10 px-3 text-sm font-medium text-amber-100 sm:mt-7">
+                  <input
+                    type="checkbox"
+                    checked={newIsPinned}
+                    onChange={(event) => setNewIsPinned(event.target.checked)}
+                    disabled={isCreating}
+                    className="h-4 w-4 accent-cyan-300"
+                  />
+                  Pinned
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                disabled={isCreating}
+                className="inline-flex h-11 items-center justify-center rounded-md border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating || !newMemoryText.trim()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-cyan-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {isCreating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                )}
+                Save memory
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {editingMemory ? (
         <div
