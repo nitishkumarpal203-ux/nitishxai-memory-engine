@@ -5,7 +5,7 @@ A clean Next.js App Router MVP for memory-aware chat:
 - Chat page where the user sends a message.
 - Messages are saved directly into Supabase with optional vector embeddings.
 - Local mock AI returns a successful response.
-- Memories page lists, edits, deletes, keyword searches, and AI-searches saved memories.
+- Memories page lists, edits, deletes, keyword searches, and semantic vector-searches saved memories.
 
 ## Tech Stack
 
@@ -92,7 +92,7 @@ npm run dev
 
 8. Open the login page on the URL printed by the dev server and sign in with Google.
 
-9. Open the Memories page and enable `AI Semantic Search` to rank results by meaning.
+9. Open the Memories page and enable `Semantic Search` to rank results by meaning.
 
 ## Vercel Deployment
 
@@ -146,12 +146,14 @@ https://your-vercel-domain.vercel.app/memories
 5. A deterministic local mock embedding is saved in `embedding` when the vector column exists.
 6. The API returns `{ "reply": "Memory saved successfully.", "saved": true }`.
 7. The Memories page reads only the authenticated user's rows.
-8. When `AI Semantic Search` is enabled, `/api/memories?query=...&ai=true` calls the `match_memories` RPC and returns semantic matches. If the RPC is unavailable, the app falls back to local semantic ranking.
+8. Chat retrieves top memories by semantic meaning first, then falls back to keyword, importance, and recency ranking.
+9. When `Semantic Search` is enabled, `/api/memories?query=...&semantic=true` calls the `match_memories` RPC and returns similarity-scored semantic matches. If the RPC is unavailable, the app falls back to local semantic ranking or keyword results.
 
 ## MVP Notes
 
 - Google authentication is required for private memory access.
 - Supabase access happens in server routes with `SUPABASE_SERVICE_ROLE_KEY`; routes validate the browser access token before querying.
 - Row Level Security policies are included so authenticated users can access only their own memories if you later query with the anon client.
-- Chat replies and semantic search both stay in local mock mode with no external AI API calls.
+- Chat replies, embeddings, and semantic search all stay in local mock mode with no external AI API calls.
 - If the vector column or RPC is unavailable, memory saves still work and semantic search falls back to local ranking or keyword results.
+- Existing memories without vectors are backfilled with local embeddings during normal memory loads and semantic searches.

@@ -33,11 +33,18 @@ type MemoryPatch = {
   embedding?: number[];
 };
 
+type MemoryEmbeddingBackfillRow = {
+  id: string;
+  memory_text: string;
+  category: string | null;
+};
+
 type SaveMemoryOptions = {
   withEmbedding?: boolean;
 };
 
 const LOCAL_SEARCH_LIMIT = 75;
+const EMBEDDING_BACKFILL_LIMIT = 100;
 const STOP_WORDS = new Set([
   "about",
   "after",
@@ -79,6 +86,68 @@ function normalizeMemory(row: MemoryRow): Memory {
   };
 }
 
+async function backfillMissingEmbeddings(userId: string) {
+  const { data, error } = await getSupabaseAdmin()
+    .from("memories")
+    .select("id, memory_text, category")
+    .eq("user_id", userId)
+    .is("embedding", null)
+    .order("created_at", { ascending: false })
+    .limit(EMBEDDING_BACKFILL_LIMIT);
+
+  if (error || !data?.length) {
+    return;
+  }
+
+  for (const memory of data as MemoryEmbeddingBackfillRow[]) {
+    const embedding = await tryGenerateEmbedding(
+      `${memory.memory_text} ${memory.category ?? "general"}`
+    );
+
+    if (!embedding) {
+      continue;
+    }
+
+    await getSupabaseAdmin()
+      .from("memories")
+      .update({ embedding })
+      .eq("id", memory.id)
+      .eq("user_id", userId)
+      .is("embedding", null);
+  }
+}
+
+function rankSemanticMatches(
+  query: string,
+  memories: Memory[],
+  limit: number
+) {
+  return memories
+    .map((memory) => {
+      const similarity = typeof memory.similarity === "number" ? memory.similarity : 0;
+      const keywordBoost = Math.min(getKeywordScore(query, memory), 8) * 0.025;
+      const importanceBoost = getImportanceScore(memory) * 0.03;
+      const recencyBoost = getRecencyScore(memory) * 0.015;
+
+      return {
+        memory,
+        rankScore: similarity + keywordBoost + importanceBoost + recencyBoost
+      };
+    })
+    .sort((a, b) => {
+      if (b.rankScore !== a.rankScore) {
+        return b.rankScore - a.rankScore;
+      }
+
+      return (
+        new Date(b.memory.created_at).getTime() -
+        new Date(a.memory.created_at).getTime()
+      );
+    })
+    .slice(0, limit)
+    .map((result) => result.memory);
+}
+
 async function semanticSearchMemories(
   query: string,
   limit: number,
@@ -87,8 +156,10 @@ async function semanticSearchMemories(
   const embedding = await generateEmbedding(query);
 
   try {
+    await backfillMissingEmbeddings(userId);
+
     const { data, error } = await getSupabaseAdmin().rpc("match_memories", {
-      match_count: limit,
+      match_count: Math.max(limit, 50),
       match_user_id: userId,
       query_embedding: embedding
     });
@@ -100,7 +171,7 @@ async function semanticSearchMemories(
     const memories = (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
 
     if (memories.length) {
-      return memories;
+      return rankSemanticMatches(query, memories, limit);
     }
   } catch {
     // Fall back to local ranking when pgvector or the RPC is not available.
@@ -123,6 +194,8 @@ export async function listMemories({
   if (query?.trim() && semantic) {
     return semanticSearchMemories(query.trim(), limit, userId);
   }
+
+  await backfillMissingEmbeddings(userId);
 
   let request = getSupabaseAdmin()
     .from("memories")
@@ -258,6 +331,24 @@ export async function findRelevantMemories(
   message: string,
   limit = 5
 ): Promise<Memory[]> {
+  const trimmedMessage = message.trim();
+
+  if (trimmedMessage) {
+    try {
+      const semanticMatches = await semanticSearchMemories(
+        trimmedMessage,
+        limit,
+        userId
+      );
+
+      if (semanticMatches.length) {
+        return semanticMatches;
+      }
+    } catch {
+      // Keep chat stable with keyword retrieval when semantic search is unavailable.
+    }
+  }
+
   const memories = await listMemories({ limit: LOCAL_SEARCH_LIMIT, userId });
   const ranked = memories
     .map((memory) => ({

@@ -45,7 +45,7 @@ export function MemorySearch() {
   const { accessToken } = useAuth();
   const [query, setQuery] = useState("");
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [isAiSearch, setIsAiSearch] = useState(false);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -57,7 +57,7 @@ export function MemorySearch() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const fetchMemories = useCallback(async (searchQuery = "", aiEnabled = false) => {
+  const fetchMemories = useCallback(async (searchQuery = "", semanticEnabled = false) => {
     setIsLoading(true);
     setError(null);
     setNotice(null);
@@ -74,8 +74,8 @@ export function MemorySearch() {
         params.set("query", trimmedQuery);
       }
 
-      if (aiEnabled && trimmedQuery) {
-        params.set("ai", "true");
+      if (semanticEnabled && trimmedQuery) {
+        params.set("semantic", "true");
       }
 
       const endpoint = params.toString()
@@ -113,13 +113,13 @@ export function MemorySearch() {
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void fetchMemories(query, isAiSearch);
+    void fetchMemories(query, isSemanticSearch);
   }
 
-  function handleAiSearchToggle() {
-    const nextValue = !isAiSearch;
+  function handleSemanticSearchToggle() {
+    const nextValue = !isSemanticSearch;
 
-    setIsAiSearch(nextValue);
+    setIsSemanticSearch(nextValue);
     void fetchMemories(query, nextValue);
   }
 
@@ -247,13 +247,14 @@ export function MemorySearch() {
             Supabase memories
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Loaded from <span className="text-cyan-300">/api/memories</span>
+            Keyword or semantic vector search from{" "}
+            <span className="text-cyan-300">/api/memories</span>
           </p>
         </div>
 
         <form onSubmit={handleSearch} className="flex w-full flex-col gap-3 lg:max-w-2xl">
           <label className="sr-only" htmlFor="memory-search">
-            Search memories
+            Semantic search memories
           </label>
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
@@ -263,8 +264,8 @@ export function MemorySearch() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={
-                  isAiSearch
-                    ? "Search by meaning, like future tech..."
+                  isSemanticSearch
+                    ? "Semantic search by meaning, like future tech or business ideas..."
                     : "Search memory_text..."
                 }
                 className="h-11 w-full rounded-md border border-cyan-300/20 bg-slate-950/80 py-2 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:shadow-[0_0_0_3px_rgba(103,232,249,0.12)]"
@@ -272,16 +273,16 @@ export function MemorySearch() {
             </div>
             <button
               type="button"
-              onClick={handleAiSearchToggle}
+              onClick={handleSemanticSearchToggle}
               className={`inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md border px-4 text-sm font-semibold transition ${
-                isAiSearch
+                isSemanticSearch
                   ? "border-violet-300/50 bg-violet-300 text-slate-950 shadow-[0_0_24px_rgba(196,181,253,0.18)]"
                   : "border-violet-300/20 bg-violet-400/10 text-violet-100 hover:border-violet-300/45 hover:bg-violet-400/20"
               }`}
-              aria-pressed={isAiSearch}
+              aria-pressed={isSemanticSearch}
             >
               <BrainCircuit className="h-4 w-4" aria-hidden="true" />
-              AI Semantic Search
+              Semantic Search
             </button>
             <button
               type="submit"

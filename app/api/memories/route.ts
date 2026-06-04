@@ -13,24 +13,25 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("query")?.trim() ?? "";
-    const useAiSearch = searchParams.get("ai") === "true";
+    const useSemanticSearch =
+      searchParams.get("semantic") === "true" || searchParams.get("ai") === "true";
     const user = await requireAuthenticatedUser(request);
 
     try {
       const memories = await listMemories({
         limit: 50,
         query,
-        semantic: useAiSearch && Boolean(query),
+        semantic: useSemanticSearch && Boolean(query),
         userId: user.id
       });
 
       return NextResponse.json({
-        aiSearch: useAiSearch && Boolean(query),
+        aiSearch: useSemanticSearch && Boolean(query),
         memories,
-        searchMode: useAiSearch && query ? "semantic" : "keyword"
+        searchMode: useSemanticSearch && query ? "semantic" : "keyword"
       });
     } catch (semanticError) {
-      if (!useAiSearch || !query) {
+      if (!useSemanticSearch || !query) {
         throw semanticError;
       }
 
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
         aiSearch: false,
         memories,
         notice:
-          "AI Semantic Search is unavailable right now, so keyword results are shown instead.",
+          "Semantic vector search is unavailable right now, so keyword results are shown instead.",
         searchMode: "keyword"
       });
     }
