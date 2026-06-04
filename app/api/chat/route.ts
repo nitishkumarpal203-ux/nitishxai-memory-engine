@@ -27,7 +27,12 @@ function isInsightRequest(message: string, mode?: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { message?: unknown; mode?: unknown };
+    const body = (await request.json()) as {
+      message?: unknown;
+      mode?: unknown;
+      saveAsMemory?: unknown;
+      source?: unknown;
+    };
     const message = typeof body.message === "string" ? body.message.trim() : "";
 
     if (!message) {
@@ -71,7 +76,11 @@ export async function POST(request: Request) {
         : memoriesForInsight.slice(0, 5);
     }
 
-    const memoryDrafts = await extractLongTermMemories(message);
+    const shouldSaveMemory =
+      body.source === "memory" || body.saveAsMemory === true;
+    const memoryDrafts = shouldSaveMemory
+      ? await extractLongTermMemories(message)
+      : [];
     const savedMemories = await saveMemories(user.id, memoryDrafts);
 
     return NextResponse.json(

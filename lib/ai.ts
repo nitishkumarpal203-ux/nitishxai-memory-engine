@@ -546,7 +546,7 @@ export async function generateChatReply(
   relevantMemories: Memory[] = []
 ) {
   if (!relevantMemories.length) {
-    return "I do not have strong saved context for this yet, so I will answer locally and keep this new note in memory for future replies.";
+    return "I do not have strong saved memory context for this yet, so I will answer locally without adding this chat prompt to long-term memory.";
   }
 
   const intent = getMessageIntent(message);
@@ -601,7 +601,8 @@ export async function extractLongTermMemories(message: string): Promise<MemoryDr
       is_archived: false,
       is_pinned: memoryType === "goal",
       is_temporary: false,
-      memory_type: memoryType
+      memory_type: memoryType,
+      source: "memory"
     }
   ];
 }

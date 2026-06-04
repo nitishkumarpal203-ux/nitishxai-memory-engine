@@ -3,7 +3,7 @@
 A clean Next.js App Router MVP for memory-aware chat:
 
 - Chat page where the user sends a message.
-- Chat messages stay transient unless local rules extract a durable long-term memory.
+- Chat messages stay transient unless a request explicitly saves a `source="memory"` long-term memory.
 - Long-term memories include type labels, confidence, pinned, archived, and temporary state.
 - Local mock AI returns a successful response.
 - Memories page lists, edits, deletes, keyword searches, and semantic vector-searches saved memories.
@@ -138,7 +138,7 @@ https://your-vercel-domain.vercel.app/
 https://your-vercel-domain.vercel.app/memories
 ```
 
-8. Confirm the production flow: login with Google, send a voice or typed chat message, see the success reply, edit/delete/search that memory on the dashboard, then open `/graph` to inspect memory relationships.
+8. Confirm the production flow: login with Google, send a voice or typed chat message, see the success reply, search existing memories on the dashboard, then open `/graph` to inspect memory relationships.
 
 ## How The Flow Works
 
@@ -147,8 +147,8 @@ https://your-vercel-domain.vercel.app/memories
 3. The route validates the token with Supabase Auth and uses `user.id`.
 4. Existing active long-term memories are searched before the reply.
 5. The current chat prompt is not automatically stored as a permanent memory.
-6. Local rules extract durable goals, interests, learning plans, startup ideas, productivity notes, or explicit “remember this” statements.
-7. Extracted memories are inserted into `public.memories` with `memory_text`, `memory_type`, `confidence`, pin/archive/temp flags, and `user_id`.
+6. A memory is only usable for retrieval when its database row has `source = 'memory'`.
+7. Saved memories are inserted into `public.memories` with `memory_text`, `memory_type`, `source`, `confidence`, pin/archive/temp flags, and `user_id`.
 8. A deterministic local mock embedding is saved in `embedding` when the vector column exists and the memory is active long-term.
 9. The API can return `saved: false` successfully when the prompt was only a chat message.
 7. The Memories page reads only the authenticated user's rows.

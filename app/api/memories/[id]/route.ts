@@ -51,6 +51,7 @@ function cleanMemoryPayload(body: unknown) {
     is_pinned: Boolean(record.is_pinned),
     is_temporary: Boolean(record.is_temporary),
     memory_type: memoryType,
+    source: "memory" as const,
     memory_text: memoryText
   };
 }

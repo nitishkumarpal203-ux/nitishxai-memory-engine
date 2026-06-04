@@ -110,8 +110,8 @@ export default function HomePage() {
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
               Send a message to the memory engine. Saved long-term memories are
-              searched locally before each contextual reply, and durable facts are
-              stored only when detected.
+              searched locally before each contextual reply. Chat prompts stay
+              transient unless explicitly saved as memory-source records.
             </p>
           </div>
 

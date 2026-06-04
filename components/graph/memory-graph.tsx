@@ -739,6 +739,9 @@ export function MemoryGraph() {
                 <Tags className="h-3.5 w-3.5" aria-hidden="true" />
                 {selectedMemory.memory_type}
               </span>
+              <span className="rounded-md border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                source: {selectedMemory.source}
+              </span>
               <span className="rounded-md border border-slate-500/30 bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-slate-300">
                 {Math.round(selectedMemory.confidence * 100)}% confidence
               </span>

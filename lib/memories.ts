@@ -6,7 +6,13 @@ import {
   tryGenerateEmbedding
 } from "@/lib/embeddings";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import type { Memory, MemoryDraft, MemoryType, MemoryUpdate } from "@/types/memory";
+import type {
+  Memory,
+  MemoryDraft,
+  MemorySource,
+  MemoryType,
+  MemoryUpdate
+} from "@/types/memory";
 
 type MemoryRow = {
   id: string;
@@ -19,6 +25,7 @@ type MemoryRow = {
   is_pinned?: boolean | null;
   is_temporary?: boolean | null;
   memory_type?: MemoryType | null;
+  source?: MemorySource | null;
   created_at: string;
   similarity?: number | null;
 };
@@ -33,6 +40,7 @@ type MemoryInsert = {
   is_pinned?: boolean;
   is_temporary?: boolean;
   memory_type?: MemoryType;
+  source?: MemorySource;
   embedding?: number[];
 };
 
@@ -45,6 +53,7 @@ type MemoryPatch = {
   is_pinned: boolean;
   is_temporary: boolean;
   memory_type: MemoryType;
+  source: MemorySource;
   embedding?: number[];
 };
 
@@ -61,9 +70,10 @@ type SaveMemoryOptions = {
 type MemoryListStatus = "active" | "all" | "archived" | "pinned" | "temporary";
 
 const MEMORY_SELECT =
-  "id, user_id, memory_text, category, importance, confidence, memory_type, is_pinned, is_archived, is_temporary, created_at";
+  "id, user_id, memory_text, category, importance, confidence, memory_type, source, is_pinned, is_archived, is_temporary, created_at";
 const LEGACY_MEMORY_SELECT =
   "id, user_id, memory_text, category, importance, created_at";
+const MEMORY_SOURCE: MemorySource = "memory";
 const LOCAL_SEARCH_LIMIT = 75;
 const EMBEDDING_BACKFILL_LIMIT = 100;
 const MEMORY_TYPES: MemoryType[] = [
@@ -116,6 +126,10 @@ function normalizeMemoryType(value: unknown): MemoryType {
   return MEMORY_TYPES.includes(value as MemoryType) ? (value as MemoryType) : "idea";
 }
 
+function normalizeMemorySource(value: unknown): MemorySource {
+  return value === MEMORY_SOURCE ? "memory" : "chat";
+}
+
 function normalizeMemory(row: MemoryRow): Memory {
   return {
     id: row.id,
@@ -128,6 +142,7 @@ function normalizeMemory(row: MemoryRow): Memory {
     is_pinned: Boolean(row.is_pinned),
     is_temporary: Boolean(row.is_temporary),
     memory_type: normalizeMemoryType(row.memory_type),
+    source: normalizeMemorySource(row.source),
     created_at: row.created_at,
     similarity: row.similarity ?? null
   };
@@ -138,6 +153,9 @@ async function backfillMissingEmbeddings(userId: string) {
     .from("memories")
     .select("id, memory_text, category")
     .eq("user_id", userId)
+    .eq("source", MEMORY_SOURCE)
+    .eq("is_archived", false)
+    .eq("is_temporary", false)
     .is("embedding", null)
     .order("created_at", { ascending: false })
     .limit(EMBEDDING_BACKFILL_LIMIT);
@@ -205,9 +223,9 @@ async function semanticSearchMemories(
       throw error;
     }
 
-    const memories = (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
+      const memories = (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
 
-    if (memories.length) {
+      if (memories.length) {
       return rankSemanticMatches(query, memories, limit);
     }
   } catch {
@@ -240,6 +258,7 @@ export async function listMemories({
     .from("memories")
     .select(MEMORY_SELECT)
     .eq("user_id", userId)
+    .eq("source", MEMORY_SOURCE)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -263,24 +282,7 @@ export async function listMemories({
   const { data, error } = await request;
 
   if (error) {
-    let fallbackRequest = getSupabaseAdmin()
-      .from("memories")
-      .select(LEGACY_MEMORY_SELECT)
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (query?.trim()) {
-      fallbackRequest = fallbackRequest.ilike("memory_text", `%${query.trim()}%`);
-    }
-
-    const { data: fallbackData, error: fallbackError } = await fallbackRequest;
-
-    if (fallbackError) {
-      throw fallbackError;
-    }
-
-    return (fallbackData ?? []).map((row: MemoryRow) => normalizeMemory(row));
+    throw error;
   }
 
   return (data ?? []).map((row: MemoryRow) => normalizeMemory(row));
@@ -384,7 +386,9 @@ function getIntentTypeBoost(message: string, memory: Memory) {
 }
 
 function getActiveMemoryFilter(memory: Memory) {
-  return !memory.is_archived && !memory.is_temporary;
+  return (
+    memory.source === MEMORY_SOURCE && !memory.is_archived && !memory.is_temporary
+  );
 }
 
 function getMemorySemanticText(memory: Memory) {
@@ -400,7 +404,8 @@ function normalizeDraft(memory: MemoryDraft): MemoryDraft {
     is_archived: Boolean(memory.is_archived),
     is_pinned: Boolean(memory.is_pinned),
     is_temporary: Boolean(memory.is_temporary),
-    memory_type: normalizeMemoryType(memory.memory_type)
+    memory_type: normalizeMemoryType(memory.memory_type),
+    source: MEMORY_SOURCE
   };
 }
 
@@ -430,7 +435,8 @@ function normalizeUpdatedMemory(memory: MemoryUpdate): MemoryUpdate {
     is_archived: Boolean(memory.is_archived),
     is_pinned: Boolean(memory.is_pinned),
     is_temporary: Boolean(memory.is_temporary),
-    memory_type: normalizeMemoryType(memory.memory_type)
+    memory_type: normalizeMemoryType(memory.memory_type),
+    source: MEMORY_SOURCE
   };
 }
 
@@ -469,7 +475,8 @@ function getInsertedRow(memory: MemoryDraft, userId: string, embedding: number[]
     is_archived: Boolean(memory.is_archived),
     is_pinned: Boolean(memory.is_pinned),
     is_temporary: Boolean(memory.is_temporary),
-    memory_type: memory.memory_type
+    memory_type: memory.memory_type,
+    source: MEMORY_SOURCE
   };
 
   if (embedding && !memory.is_archived && !memory.is_temporary) {
@@ -488,7 +495,8 @@ function getUpdatedPatch(memory: MemoryUpdate, embedding: number[] | null) {
     is_archived: memory.is_archived,
     is_pinned: memory.is_pinned,
     is_temporary: memory.is_temporary,
-    memory_type: memory.memory_type
+    memory_type: memory.memory_type,
+    source: MEMORY_SOURCE
   };
 
   if (embedding && !memory.is_archived && !memory.is_temporary) {
@@ -758,7 +766,8 @@ export async function saveMemory(
       category: "general",
       confidence: 0.7,
       importance: 5,
-      memory_type: "idea"
+      memory_type: "idea",
+      source: MEMORY_SOURCE
     },
     userId,
     options

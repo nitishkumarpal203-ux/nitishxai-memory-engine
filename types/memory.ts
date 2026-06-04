@@ -5,6 +5,8 @@ export type MemoryType =
   | "productivity"
   | "idea";
 
+export type MemorySource = "memory" | "chat";
+
 export type Memory = {
   id: string;
   user_id: string;
@@ -17,6 +19,7 @@ export type Memory = {
   is_pinned: boolean;
   is_temporary: boolean;
   memory_type: MemoryType;
+  source: MemorySource;
   similarity?: number | null;
 };
 
@@ -29,6 +32,7 @@ export type MemoryDraft = {
   is_pinned?: boolean;
   is_temporary?: boolean;
   memory_type: MemoryType;
+  source?: MemorySource;
 };
 
 export type MemoryUpdate = {
@@ -40,6 +44,7 @@ export type MemoryUpdate = {
   is_pinned: boolean;
   is_temporary: boolean;
   memory_type: MemoryType;
+  source: MemorySource;
 };
 
 export type MemoryInsight = {

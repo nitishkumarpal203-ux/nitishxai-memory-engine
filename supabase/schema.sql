@@ -10,6 +10,8 @@ create table if not exists public.memories (
   confidence numeric not null default 0.7 check (confidence >= 0 and confidence <= 1),
   memory_type text not null default 'idea'
     check (memory_type in ('goal', 'learning', 'startup', 'productivity', 'idea')),
+  source text not null default 'memory'
+    check (source in ('memory', 'chat')),
   is_pinned boolean not null default false,
   is_archived boolean not null default false,
   is_temporary boolean not null default false,
@@ -25,9 +27,25 @@ alter table public.memories
     check (confidence >= 0 and confidence <= 1),
   add column if not exists memory_type text not null default 'idea'
     check (memory_type in ('goal', 'learning', 'startup', 'productivity', 'idea')),
+  add column if not exists source text not null default 'memory'
+    check (source in ('memory', 'chat')),
   add column if not exists is_pinned boolean not null default false,
   add column if not exists is_archived boolean not null default false,
   add column if not exists is_temporary boolean not null default false;
+
+update public.memories
+set source = 'chat',
+    is_temporary = true
+where source = 'memory'
+  and (
+    memory_text in (
+      'What are my goals?',
+      'Suggest a project for me',
+      'What should I focus on this week?',
+      'Summarize my memories'
+    )
+    or memory_text ~* '^(what|when|where|why|how|who|can|could|should|would|do|does|did|is|are)([[:space:]]|$)'
+  );
 
 alter table public.memories enable row level security;
 
@@ -66,11 +84,11 @@ create index if not exists memories_user_created_at_idx
 
 create index if not exists memories_user_active_created_at_idx
   on public.memories (user_id, is_pinned desc, created_at desc)
-  where is_archived = false and is_temporary = false;
+  where source = 'memory' and is_archived = false and is_temporary = false;
 
 create index if not exists memories_user_type_idx
   on public.memories (user_id, memory_type, confidence desc)
-  where is_archived = false and is_temporary = false;
+  where source = 'memory' and is_archived = false and is_temporary = false;
 
 create index if not exists memories_user_memory_text_idx
   on public.memories (user_id, memory_text);
@@ -95,6 +113,7 @@ returns table (
   importance integer,
   confidence numeric,
   memory_type text,
+  source text,
   is_pinned boolean,
   is_archived boolean,
   is_temporary boolean,
@@ -112,6 +131,7 @@ as $$
     memories.importance,
     memories.confidence,
     memories.memory_type,
+    memories.source,
     memories.is_pinned,
     memories.is_archived,
     memories.is_temporary,
@@ -120,6 +140,7 @@ as $$
   from public.memories
   where memories.user_id = match_user_id
     and memories.embedding is not null
+    and memories.source = 'memory'
     and memories.is_archived = false
     and memories.is_temporary = false
   order by memories.embedding <=> query_embedding
